@@ -18,6 +18,28 @@ streamlit run app.py
 
 The app uses SQLite by default at `data/exterior_quote_assistant.db`. Copy `.env.example` to `.env` if you want to override defaults.
 
+## Hostinger VPS Deployment
+
+The `deploy/` directory includes a basic Ubuntu VPS deployment setup using systemd and nginx.
+
+On the VPS, run:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/cdorman1/exterior-quote-assistant.git /tmp/exterior-quote-assistant
+sudo bash /tmp/exterior-quote-assistant/deploy/hostinger_setup.sh
+```
+
+After deployment:
+
+```bash
+sudo systemctl status exterior-quote-assistant
+sudo journalctl -u exterior-quote-assistant -f
+```
+
+The app service listens on `127.0.0.1:8501`, with nginx proxying public traffic from `http://srv1674962.hstgr.cloud`.
+
 ## Project Structure
 
 ```text

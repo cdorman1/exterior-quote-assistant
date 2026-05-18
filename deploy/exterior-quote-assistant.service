@@ -1,0 +1,15 @@
+[Unit]
+Description=Exterior Quote Assistant Streamlit App
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/exterior-quote-assistant
+ExecStart=/opt/exterior-quote-assistant/.venv/bin/streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false
+Restart=always
+RestartSec=5
+User=root
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
