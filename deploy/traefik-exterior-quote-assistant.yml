@@ -2,6 +2,7 @@ http:
   routers:
     exterior-quote-assistant:
       rule: "Host(`sentinelforge.tech`) && PathPrefix(`/quote-system`)"
+      priority: 1002
       entryPoints:
         - websecure
       tls:
