@@ -1,5 +1,86 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from math import ceil
+from typing import Sequence
+
+
+@dataclass(frozen=True)
+class RectangularWall:
+    length_ft: float
+    height_ft: float
+
+
+@dataclass(frozen=True)
+class TriangularGable:
+    base_ft: float
+    height_ft: float
+
+
+@dataclass(frozen=True)
+class RectangularOpening:
+    width_ft: float
+    height_ft: float
+
+
+@dataclass(frozen=True)
+class VinylSidingTakeoffResult:
+    gross_square_feet: float
+    net_square_feet: float
+    waste_square_feet: float
+    total_square_feet: float
+    siding_squares: int
+
+
+def _rectangular_area(length_ft: float, height_ft: float) -> float:
+    return length_ft * height_ft
+
+
+def _triangular_area(base_ft: float, height_ft: float) -> float:
+    return 0.5 * base_ft * height_ft
+
+
+def calculate_vinyl_siding_takeoff(
+    walls: Sequence[RectangularWall] | None = None,
+    gables: Sequence[TriangularGable] | None = None,
+    openings: Sequence[RectangularOpening] | None = None,
+    waste_percent: float = 0.10,
+) -> VinylSidingTakeoffResult:
+    """
+    Calculate vinyl siding takeoff in square feet and 100-sq-ft squares.
+
+    Walls are rectangles, gables are triangles, and openings are rectangular
+    deductions. Waste is applied after deductions. One siding square equals
+    100 square feet, and squares are rounded up to the next whole square.
+    """
+    if waste_percent < 0:
+        raise ValueError("waste_percent must be greater than or equal to 0")
+
+    walls = walls or []
+    gables = gables or []
+    openings = openings or []
+
+    gross_square_feet = round(
+        sum(_rectangular_area(wall.length_ft, wall.height_ft) for wall in walls)
+        + sum(_triangular_area(gable.base_ft, gable.height_ft) for gable in gables),
+        2,
+    )
+    opening_square_feet = round(
+        sum(_rectangular_area(opening.width_ft, opening.height_ft) for opening in openings),
+        2,
+    )
+    net_square_feet = round(max(gross_square_feet - opening_square_feet, 0), 2)
+    waste_square_feet = round(net_square_feet * waste_percent, 2)
+    total_square_feet = round(net_square_feet + waste_square_feet, 2)
+    siding_squares = ceil(total_square_feet / 100) if total_square_feet > 0 else 0
+    return VinylSidingTakeoffResult(
+        gross_square_feet=gross_square_feet,
+        net_square_feet=net_square_feet,
+        waste_square_feet=waste_square_feet,
+        total_square_feet=total_square_feet,
+        siding_squares=siding_squares,
+    )
+
 
 def calculate_material_cost(quantity: float, unit_cost: float, waste_factor: float) -> float:
     return round(quantity * unit_cost * (1 + waste_factor), 2)
