@@ -69,6 +69,26 @@ A     sentinelforge.tech      <your VPS public IPv4>
 
 If you want only one endpoint, use just the root domain and the `/quote-system` path.
 
+## Labor Estimating Workflow
+
+The user selects a project, trade, measurement quantity, labor method, difficulty, and optional complexity conditions.
+
+The system loads default labor tasks for the selected trade and project type.
+
+The system calculates labor line items and a labor summary from the selected method.
+
+Manual labor overrides are allowed, but an override reason should be provided to avoid review warnings.
+
+The labor breakdown is saved with the quote.
+
+## Development Note
+
+During early development, if database models change, delete `data/exterior_quote_assistant.db` and rerun:
+
+```bash
+python -m src.seed_data
+```
+
 ## Project Structure
 
 ```text
@@ -110,8 +130,9 @@ exterior_quote_assistant/
 - Trade scope support for roofing, siding, and combination jobs
 - Seeded material prices, labor tasks, waste rules, complexity rules, and change order rates
 - Manual measured quantity entry from blueprints or field measurements
+- Labor estimating by unit-based, crew-day, hourly, and subcontractor methods
 - Material cost, labor cost, tax, total cost, and gross-margin customer price calculations
-- Saved quotes with line items
+- Saved quotes with material and labor line items
 - Generated proposal text with scope, assumptions, exclusions, investment, and change order terms
 
 ## Future Features

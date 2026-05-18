@@ -1,4 +1,3 @@
 material_name,trade,category,unit,default_waste_factor,supplier,unit_cost,effective_date,notes
 Architectural shingles,roofing,roof covering,square,0.10,Default Supplier,145,2026-05-18,Sample roofing price
 Vinyl siding,siding,siding,square,0.10,Default Supplier,118,2026-05-18,Sample siding price
-Brick,masonry,veneer,each,0.08,Default Supplier,0.78,2026-05-18,Sample masonry price

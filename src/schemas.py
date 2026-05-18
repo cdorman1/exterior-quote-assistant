@@ -72,3 +72,57 @@ class QuoteLineItemInput(BaseModel):
     waste_factor: float = Field(default=0, ge=0)
     complexity_multiplier: float = Field(default=1, ge=0)
     line_cost: float = Field(ge=0)
+
+
+class LaborTaskCreate(BaseModel):
+    name: str
+    trade: str
+    unit: str
+    base_labor_cost: float = Field(ge=0)
+    minimum_charge: float = Field(default=0, ge=0)
+    default_multiplier: float = Field(default=1, ge=0)
+    applies_to_project_type: str = "both"
+    active: bool = True
+    notes: str | None = None
+
+
+class LaborTaskRead(LaborTaskCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+
+
+class ComplexityRuleCreate(BaseModel):
+    trade: str
+    condition_name: str
+    multiplier: float = Field(ge=0)
+
+
+class ComplexityRuleRead(ComplexityRuleCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+
+
+class QuoteLaborLineItemInput(BaseModel):
+    trade: str
+    labor_method: str
+    task_name: str
+    quantity: float = Field(ge=0)
+    unit: str
+    base_rate: float = Field(ge=0)
+    complexity_multiplier: float = Field(default=1, ge=0)
+    minimum_charge: float = Field(default=0, ge=0)
+    calculated_cost: float = Field(default=0, ge=0)
+    manual_override_cost: float | None = None
+    final_cost: float = Field(default=0, ge=0)
+    override_reason: str | None = None
+    notes: str | None = None
+
+
+class QuoteLaborLineItemRead(QuoteLaborLineItemInput):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    quote_id: int
+    created_at: datetime | None = None

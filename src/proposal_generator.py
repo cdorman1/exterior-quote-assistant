@@ -9,7 +9,7 @@ def _money(value: float) -> str:
 
 def generate_proposal_text(customer, project, quote, line_items, change_order_rates) -> str:
     material_lines = [item for item in line_items if item.item_type == "material"]
-    labor_lines = [item for item in line_items if item.item_type == "labor"]
+    labor_lines = list(getattr(quote, "labor_line_items", []))
 
     scope_lines = "\n".join(
         f"- {item.description}: {item.quantity:g} {item.unit}" for item in line_items
@@ -18,7 +18,7 @@ def generate_proposal_text(customer, project, quote, line_items, change_order_ra
         f"- {item.description} at {item.quantity:g} {item.unit}" for item in material_lines
     ) or "- No separate material line items listed."
     labor_text = "\n".join(
-        f"- {item.description} at {item.quantity:g} {item.unit}" for item in labor_lines
+        f"- {item.task_name} at {item.quantity:g} {item.unit} ({item.final_cost:,.2f})" for item in labor_lines
     ) or "- No separate labor line items listed."
     change_order_text = "\n".join(
         f"- {rate.description}: {_money(rate.unit_price)} per {rate.unit}"

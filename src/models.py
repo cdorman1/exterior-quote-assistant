@@ -77,7 +77,10 @@ class LaborTask(Base):
     unit: Mapped[str] = mapped_column(String(50), nullable=False)
     base_labor_cost: Mapped[float] = mapped_column(Float, nullable=False)
     minimum_charge: Mapped[float] = mapped_column(Float, default=0)
+    default_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
+    applies_to_project_type: Mapped[str] = mapped_column(String(50), default="both")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class WasteRule(Base):
@@ -119,6 +122,7 @@ class Quote(Base):
 
     project: Mapped[Project] = relationship(back_populates="quotes")
     line_items: Mapped[list["QuoteLineItem"]] = relationship(back_populates="quote")
+    labor_line_items: Mapped[list["QuoteLaborLineItem"]] = relationship(back_populates="quote")
 
 
 class QuoteLineItem(Base):
@@ -137,6 +141,29 @@ class QuoteLineItem(Base):
     line_cost: Mapped[float] = mapped_column(Float, nullable=False)
 
     quote: Mapped[Quote] = relationship(back_populates="line_items")
+
+
+class QuoteLaborLineItem(Base):
+    __tablename__ = "quote_labor_line_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quotes.id"), nullable=False)
+    trade: Mapped[str] = mapped_column(String(50), nullable=False)
+    labor_method: Mapped[str] = mapped_column(String(50), nullable=False)
+    task_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    base_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    complexity_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
+    minimum_charge: Mapped[float] = mapped_column(Float, default=0)
+    calculated_cost: Mapped[float] = mapped_column(Float, default=0)
+    manual_override_cost: Mapped[float | None] = mapped_column(Float)
+    final_cost: Mapped[float] = mapped_column(Float, default=0)
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    quote: Mapped[Quote] = relationship(back_populates="labor_line_items")
 
 
 class ChangeOrderRate(Base):

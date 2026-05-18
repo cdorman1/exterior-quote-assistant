@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from src.database import SessionLocal, init_db
+from sqlalchemy import inspect
+
+from src.constants import LABOR_CONDITION_MULTIPLIERS, LABOR_DIFFICULTY_MULTIPLIERS
+from src.database import Base, SessionLocal, engine, init_db
 from src.models import (
     ChangeOrderRate,
     ComplexityRule,
@@ -38,20 +41,102 @@ MATERIALS = [
 ]
 
 LABOR_TASKS = [
-    ("Roof tear off per square", "roofing", "square", 85, 750),
-    ("Roof install per square", "roofing", "square", 175, 1200),
-    ("Roof decking replacement per sheet", "roofing", "sheet", 55, 250),
-    ("Siding tear off per square", "siding", "square", 70, 600),
-    ("Siding install per square", "siding", "square", 190, 1300),
-    ("Soffit install per linear foot", "siding", "linear foot", 7.5, 350),
-    ("Fascia install per linear foot", "siding", "linear foot", 6.5, 350),
+    ("Roof tear off", "roofing", "square", 90, 750, 1.0, "existing_construction", "Existing construction tear off"),
+    ("Roof install architectural shingles", "roofing", "square", 125, 1000, 1.0, "both", "Primary roofing install"),
+    ("Roof decking replacement", "roofing", "each", 65, 0, 1.0, "both", "Per sheet replacement"),
+    ("Install ridge vent", "roofing", "linear_foot", 8, 0, 1.0, "both", "Ventilation accessory labor"),
+    ("Flashing labor", "roofing", "linear_foot", 12, 0, 1.0, "both", "Flashing and penetration detailing"),
+    ("Siding tear off", "siding", "square", 85, 750, 1.0, "existing_construction", "Existing siding removal"),
+    ("Install vinyl siding", "siding", "square", 300, 2500, 1.0, "both", "Primary siding install"),
+    ("Install house wrap", "siding", "square", 45, 0, 1.0, "both", "Weather barrier labor"),
+    ("Install soffit", "siding", "linear_foot", 8, 0, 1.0, "both", "Soffit install labor"),
+    ("Install fascia", "siding", "linear_foot", 9, 0, 1.0, "both", "Fascia install labor"),
+    ("Trim and corner package", "siding", "allowance", 1200, 0, 1.0, "both", "Allowance for trim package"),
 ]
+
+COMPLEXITY_RULES = [
+    ("roofing", "simple", LABOR_DIFFICULTY_MULTIPLIERS["simple"]),
+    ("roofing", "moderate", LABOR_DIFFICULTY_MULTIPLIERS["moderate"]),
+    ("roofing", "difficult", LABOR_DIFFICULTY_MULTIPLIERS["difficult"]),
+    ("roofing", "very_difficult", LABOR_DIFFICULTY_MULTIPLIERS["very_difficult"]),
+    *[("roofing", name, multiplier) for name, multiplier in LABOR_CONDITION_MULTIPLIERS["roofing"].items()],
+    ("siding", "simple", LABOR_DIFFICULTY_MULTIPLIERS["simple"]),
+    ("siding", "moderate", LABOR_DIFFICULTY_MULTIPLIERS["moderate"]),
+    ("siding", "difficult", LABOR_DIFFICULTY_MULTIPLIERS["difficult"]),
+    ("siding", "very_difficult", LABOR_DIFFICULTY_MULTIPLIERS["very_difficult"]),
+    *[("siding", name, multiplier) for name, multiplier in LABOR_CONDITION_MULTIPLIERS["siding"].items()],
+]
+
+CHANGE_ORDER_RATES = {
+    "roofing": 95,
+    "siding": 90,
+}
+
+REQUIRED_TABLES = {"labor_tasks", "quote_labor_line_items"}
+REQUIRED_LABOR_TASK_COLUMNS = {
+    "id",
+    "name",
+    "trade",
+    "unit",
+    "base_labor_cost",
+    "minimum_charge",
+    "default_multiplier",
+    "applies_to_project_type",
+    "active",
+    "notes",
+}
+ALLOWED_TRADES = {"roofing", "siding"}
+REQUIRED_QUOTE_LABOR_COLUMNS = {
+    "id",
+    "quote_id",
+    "trade",
+    "labor_method",
+    "task_name",
+    "quantity",
+    "unit",
+    "base_rate",
+    "complexity_multiplier",
+    "minimum_charge",
+    "calculated_cost",
+    "manual_override_cost",
+    "final_cost",
+    "override_reason",
+    "notes",
+    "created_at",
+}
+
+
+def _database_needs_reset() -> bool:
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not REQUIRED_TABLES.issubset(existing_tables):
+        return True
+    labor_columns = {column["name"] for column in inspector.get_columns("labor_tasks")}
+    quote_labor_columns = {column["name"] for column in inspector.get_columns("quote_labor_line_items")}
+    if not REQUIRED_LABOR_TASK_COLUMNS.issubset(labor_columns) or not REQUIRED_QUOTE_LABOR_COLUMNS.issubset(quote_labor_columns):
+        return True
+
+    db = SessionLocal()
+    try:
+        return (
+            db.query(Material).filter(~Material.trade.in_(sorted(ALLOWED_TRADES))).first() is not None
+            or db.query(LaborTask).filter(~LaborTask.trade.in_(sorted(ALLOWED_TRADES))).first() is not None
+            or db.query(ComplexityRule).filter(~ComplexityRule.trade.in_(sorted(ALLOWED_TRADES))).first() is not None
+            or db.query(ChangeOrderRate).filter(~ChangeOrderRate.trade.in_(sorted(ALLOWED_TRADES))).first() is not None
+        )
+    finally:
+        db.close()
 
 
 def seed() -> None:
     init_db()
     db = SessionLocal()
     try:
+        if _database_needs_reset():
+            db.close()
+            Base.metadata.drop_all(bind=engine)
+            init_db()
+            db = SessionLocal()
         if db.query(Material).first():
             print("Seed data already exists.")
             return
@@ -99,7 +184,7 @@ def seed() -> None:
                 )
             )
 
-        for name, trade, unit, cost, minimum in LABOR_TASKS:
+        for name, trade, unit, cost, minimum, default_multiplier, applies_to_project_type, notes in LABOR_TASKS:
             db.add(
                 LaborTask(
                     name=name,
@@ -107,7 +192,10 @@ def seed() -> None:
                     unit=unit,
                     base_labor_cost=cost,
                     minimum_charge=minimum,
+                    default_multiplier=default_multiplier,
+                    applies_to_project_type=applies_to_project_type,
                     active=True,
+                    notes=notes,
                 )
             )
 
@@ -117,18 +205,23 @@ def seed() -> None:
                     WasteRule(trade=trade, condition_name="Standard", waste_percent=0.10),
                     WasteRule(trade=trade, condition_name="Simple layout", waste_percent=0.05),
                     WasteRule(trade=trade, condition_name="Complex layout", waste_percent=0.15),
-                    ComplexityRule(trade=trade, condition_name="Standard", multiplier=1.0),
-                    ComplexityRule(trade=trade, condition_name="Difficult access", multiplier=1.15),
-                    ComplexityRule(trade=trade, condition_name="High complexity", multiplier=1.30),
-                    ChangeOrderRate(
-                        trade=trade,
-                        description=f"{trade.title()} additional work",
-                        unit="hour",
-                        unit_price=95,
-                        notes="Default hourly change order rate",
-                    ),
                 ]
             )
+
+        for trade, condition_name, multiplier in COMPLEXITY_RULES:
+            db.add(ComplexityRule(trade=trade, condition_name=condition_name, multiplier=multiplier))
+
+        for trade, unit_price in CHANGE_ORDER_RATES.items():
+            db.add(
+                ChangeOrderRate(
+                    trade=trade,
+                    description=f"{trade.title()} additional work",
+                    unit="hour",
+                    unit_price=unit_price,
+                    notes="Default hourly change order rate",
+                )
+            )
+
         db.commit()
         print("Database initialized with sample exterior quoting data.")
     finally:
