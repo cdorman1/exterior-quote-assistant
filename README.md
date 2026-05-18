@@ -38,7 +38,7 @@ sudo systemctl status exterior-quote-assistant
 sudo journalctl -u exterior-quote-assistant -f
 ```
 
-The app service listens on `0.0.0.0:8501`. Traefik should route `http://srv1674962.hstgr.cloud` to that service using the dynamic config in `deploy/traefik-exterior-quote-assistant.yml`.
+The app service listens on `0.0.0.0:8501`. Traefik should route `https://srv1674962.hstgr.cloud` to that service using the dynamic config in `deploy/traefik-exterior-quote-assistant.yml`.
 
 ## Project Structure
 

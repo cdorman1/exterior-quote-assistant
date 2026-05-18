@@ -3,11 +3,13 @@ http:
     exterior-quote-assistant:
       rule: "Host(`srv1674962.hstgr.cloud`)"
       entryPoints:
-        - web
+        - websecure
+      tls:
+        certResolver: letsencrypt
       service: exterior-quote-assistant
 
   services:
     exterior-quote-assistant:
       loadBalancer:
         servers:
-          - url: "http://172.17.0.1:8501"
+          - url: "http://127.0.0.1:8501"

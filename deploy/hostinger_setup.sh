@@ -5,7 +5,7 @@ APP_NAME="exterior-quote-assistant"
 APP_DIR="/opt/${APP_NAME}"
 REPO_URL="https://github.com/cdorman1/exterior-quote-assistant.git"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
-TRAEFIK_DYNAMIC_DIR="/etc/traefik/dynamic"
+TRAEFIK_DYNAMIC_DIR="/docker/traefik/dynamic"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run this script as root or with sudo."
