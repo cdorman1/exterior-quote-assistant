@@ -59,7 +59,7 @@ sudo systemctl status exterior-quote-assistant
 sudo journalctl -u exterior-quote-assistant -f
 ```
 
-The app service listens on `0.0.0.0:8501`. Traefik routes the app at `https://sentinelforge.tech/quote-system`.
+The app service listens on `0.0.0.0:8501`. Traefik routes the app at `https://sentinelforge.tech/quote-system` and strips that prefix before forwarding to Streamlit.
 
 To point the domain at the VPS, add DNS records at your domain provider:
 
