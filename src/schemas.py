@@ -189,3 +189,52 @@ class TakeoffMeasurementRead(TakeoffMeasurementCreate):
 
     id: int
     created_at: datetime
+
+
+class CompanySettingsCreate(BaseModel):
+    company_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    address: str | None = None
+    logo_path: str | None = None
+    license_number: str | None = None
+    insurance_text: str | None = None
+    default_quote_expiration_days: int = 30
+    default_payment_terms: str | None = None
+    default_warranty_text: str | None = None
+    default_footer_text: str | None = None
+
+
+class CompanySettingsRead(CompanySettingsCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProposalCreate(BaseModel):
+    quote_id: int
+    proposal_number: str
+    status: str = "draft"
+    title: str
+    intro_text: str | None = None
+    scope_text: str | None = None
+    material_summary_text: str | None = None
+    labor_summary_text: str | None = None
+    assumptions_text: str | None = None
+    exclusions_text: str | None = None
+    change_order_text: str | None = None
+    payment_terms: str | None = None
+    warranty_text: str | None = None
+    total_investment_text: str | None = None
+    pdf_path: str | None = None
+
+
+class ProposalRead(ProposalCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime

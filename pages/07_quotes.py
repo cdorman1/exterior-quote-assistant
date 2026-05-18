@@ -7,7 +7,8 @@ import streamlit as st
 
 from src.auth import require_auth
 from src.database import SessionLocal, init_db
-from src.models import ChangeOrderRate, Quote, TakeoffMeasurement
+from src.models import ChangeOrderRate, Proposal, Quote, TakeoffMeasurement
+from src.proposal_service import create_or_update_proposal
 from src.proposal_generator import generate_proposal_text
 
 require_auth()
@@ -63,6 +64,28 @@ try:
         st.caption(f"Blueprint files on project: {len(quote.project.blueprint_files)}")
         if quote.notes:
             st.caption(quote.notes)
+
+        latest_proposal = (
+            db.query(Proposal)
+            .filter(Proposal.quote_id == quote.id)
+            .order_by(Proposal.updated_at.desc(), Proposal.created_at.desc(), Proposal.id.desc())
+            .first()
+        )
+        st.subheader("Proposal status")
+        if latest_proposal:
+            proposal_cols = st.columns(3)
+            proposal_cols[0].metric("Proposal number", latest_proposal.proposal_number)
+            proposal_cols[1].metric("Status", latest_proposal.status)
+            proposal_cols[2].metric("PDF path", "Saved" if latest_proposal.pdf_path else "Not generated")
+            if latest_proposal.pdf_path:
+                st.caption(latest_proposal.pdf_path)
+        else:
+            st.info("No proposal has been created for this quote yet.")
+
+        if st.button("Create Proposal Draft"):
+            proposal = create_or_update_proposal(db, quote.id)
+            st.success(f"Proposal draft {proposal.proposal_number} created.")
+            st.rerun()
 
         quantity_source_match = re.search(r"Quantity source:\s*([^;]+)", quote.notes or "", re.IGNORECASE)
         if quantity_source_match:

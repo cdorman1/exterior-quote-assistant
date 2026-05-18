@@ -10,6 +10,7 @@ from src.models import (
     ChangeOrderRate,
     ComplexityRule,
     Customer,
+    CompanySettings,
     LaborTask,
     Material,
     MaterialPrice,
@@ -72,7 +73,7 @@ CHANGE_ORDER_RATES = {
     "siding": 90,
 }
 
-REQUIRED_TABLES = {"labor_tasks", "quote_labor_line_items"}
+REQUIRED_TABLES = {"labor_tasks", "quote_labor_line_items", "company_settings", "proposals"}
 REQUIRED_QUOTE_COLUMNS = {
     "id",
     "project_id",
@@ -149,6 +150,28 @@ def _database_needs_reset() -> bool:
         )
     finally:
         db.close()
+
+
+def _ensure_company_settings(db) -> None:
+    if db.query(CompanySettings).first():
+        return
+    db.add(
+        CompanySettings(
+            company_name="Exterior Quote Assistant Demo Company",
+            phone="",
+            email="",
+            website="",
+            address="",
+            logo_path=None,
+            license_number="",
+            insurance_text="",
+            default_quote_expiration_days=30,
+            default_payment_terms="Deposit due upon approval. Final payment due upon completion unless otherwise agreed in writing.",
+            default_warranty_text="Manufacturer warranties apply to selected materials. Workmanship warranty is provided according to company policy.",
+            default_footer_text="Thank you for the opportunity to provide this proposal.",
+        )
+    )
+    db.commit()
 
 
 def seed() -> None:
@@ -246,6 +269,7 @@ def seed() -> None:
             )
 
         db.commit()
+        _ensure_company_settings(db)
         print("Database initialized with sample exterior quoting data.")
     finally:
         db.close()

@@ -81,6 +81,18 @@ Manual labor overrides are allowed, but an override reason should be provided to
 
 The labor breakdown is saved with the quote.
 
+## Professional Proposal Generation
+
+Saved quotes can be converted into customer facing proposals that look more like a finished contractor estimate package than an internal worksheet.
+
+The proposal includes company logo, company information, customer information, project details, scope of work, material summary, labor summary, assumptions, exclusions, change order terms, payment terms, warranty language, total investment, and approval section.
+
+Internal estimate details such as margin, raw profit, raw labor rates, and internal markup calculations are not shown on customer proposals by default.
+
+## Company Settings
+
+The Settings page allows users to configure company name, contact information, logo, payment terms, warranty language, license information, insurance text, and footer text.
+
 ## Blueprint Upload and Assisted Takeoff
 
 The app supports uploading blueprint PDF files and attaching them to projects.
@@ -119,6 +131,8 @@ exterior_quote_assistant/
     seed_data.py
     pricing_engine.py
     proposal_generator.py
+    proposal_service.py
+    pdf_service.py
     csv_importer.py
     constants.py
   pages/
@@ -133,9 +147,12 @@ exterior_quote_assistant/
     09_settings.py
     10_blueprints.py
     11_takeoff_measurements.py
+    12_proposals.py
   tests/
     test_pricing_engine.py
     test_blueprint_service.py
+    test_proposal_service.py
+    test_pdf_service.py
 ```
 
 ## MVP Scope
@@ -149,6 +166,7 @@ exterior_quote_assistant/
 - Material cost, labor cost, tax, total cost, and gross-margin customer price calculations
 - Saved quotes with material and labor line items
 - Generated proposal text with scope, assumptions, exclusions, investment, and change order terms
+- Company settings and branded customer-facing proposal PDFs
 
 ## Future Features
 
@@ -164,5 +182,4 @@ exterior_quote_assistant/
 - Supplier price imports and historical pricing
 - Company branding and editable proposal templates
 - User accounts and permissions
-- PDF proposal export
 - Quote versioning and approval tracking

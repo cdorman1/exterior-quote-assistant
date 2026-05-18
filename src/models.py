@@ -126,6 +126,7 @@ class Quote(Base):
     project: Mapped[Project] = relationship(back_populates="quotes")
     line_items: Mapped[list["QuoteLineItem"]] = relationship(back_populates="quote")
     labor_line_items: Mapped[list["QuoteLaborLineItem"]] = relationship(back_populates="quote")
+    proposals: Mapped[list["Proposal"]] = relationship(back_populates="quote")
 
 
 class QuoteLineItem(Base):
@@ -230,6 +231,51 @@ class TakeoffMeasurement(Base):
     project: Mapped[Project] = relationship(back_populates="takeoff_measurements")
     blueprint_file: Mapped[BlueprintFile | None] = relationship()
     blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
+
+
+class CompanySettings(Base):
+    __tablename__ = "company_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(50))
+    email: Mapped[str | None] = mapped_column(String(255))
+    website: Mapped[str | None] = mapped_column(String(255))
+    address: Mapped[str | None] = mapped_column(Text)
+    logo_path: Mapped[str | None] = mapped_column(Text)
+    license_number: Mapped[str | None] = mapped_column(String(100))
+    insurance_text: Mapped[str | None] = mapped_column(Text)
+    default_quote_expiration_days: Mapped[int] = mapped_column(Integer, default=30)
+    default_payment_terms: Mapped[str | None] = mapped_column(Text)
+    default_warranty_text: Mapped[str | None] = mapped_column(Text)
+    default_footer_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Proposal(Base):
+    __tablename__ = "proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quotes.id"), nullable=False)
+    proposal_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(50), default="draft")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    intro_text: Mapped[str | None] = mapped_column(Text)
+    scope_text: Mapped[str | None] = mapped_column(Text)
+    material_summary_text: Mapped[str | None] = mapped_column(Text)
+    labor_summary_text: Mapped[str | None] = mapped_column(Text)
+    assumptions_text: Mapped[str | None] = mapped_column(Text)
+    exclusions_text: Mapped[str | None] = mapped_column(Text)
+    change_order_text: Mapped[str | None] = mapped_column(Text)
+    payment_terms: Mapped[str | None] = mapped_column(Text)
+    warranty_text: Mapped[str | None] = mapped_column(Text)
+    total_investment_text: Mapped[str | None] = mapped_column(Text)
+    pdf_path: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    quote: Mapped[Quote] = relationship(back_populates="proposals")
 
 
 class ChangeOrderRate(Base):
