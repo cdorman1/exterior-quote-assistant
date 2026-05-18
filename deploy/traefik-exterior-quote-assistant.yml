@@ -1,7 +1,7 @@
 http:
   routers:
     exterior-quote-assistant:
-      rule: "Host(`srv1674962.hstgr.cloud`)"
+      rule: "Host(`sentinelforge.tech`) || Host(`www.sentinelforge.tech`) || Host(`quote.sentinelforge.tech`) || Host(`srv1674962.hstgr.cloud`)"
       entryPoints:
         - websecure
       tls:
