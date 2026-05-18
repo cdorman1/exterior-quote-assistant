@@ -7,15 +7,7 @@ http:
         - websecure
       tls:
         certResolver: letsencrypt
-      middlewares:
-        - exterior-quote-assistant-strip-prefix
       service: exterior-quote-assistant
-
-  middlewares:
-    exterior-quote-assistant-strip-prefix:
-      stripPrefix:
-        prefixes:
-          - "/quote-system"
 
   services:
     exterior-quote-assistant:
