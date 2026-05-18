@@ -73,6 +73,24 @@ CHANGE_ORDER_RATES = {
 }
 
 REQUIRED_TABLES = {"labor_tasks", "quote_labor_line_items"}
+REQUIRED_QUOTE_COLUMNS = {
+    "id",
+    "project_id",
+    "quote_name",
+    "status",
+    "target_margin",
+    "tax_rate",
+    "permit_cost",
+    "disposal_cost",
+    "equipment_cost",
+    "overhead_cost",
+    "material_cost",
+    "labor_cost",
+    "total_cost",
+    "customer_price",
+    "notes",
+    "created_at",
+}
 REQUIRED_LABOR_TASK_COLUMNS = {
     "id",
     "name",
@@ -109,11 +127,16 @@ REQUIRED_QUOTE_LABOR_COLUMNS = {
 def _database_needs_reset() -> bool:
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
-    if not REQUIRED_TABLES.issubset(existing_tables):
+    if not REQUIRED_TABLES.union({"blueprint_files", "blueprint_sheets", "takeoff_measurements"}).issubset(existing_tables):
         return True
     labor_columns = {column["name"] for column in inspector.get_columns("labor_tasks")}
     quote_labor_columns = {column["name"] for column in inspector.get_columns("quote_labor_line_items")}
-    if not REQUIRED_LABOR_TASK_COLUMNS.issubset(labor_columns) or not REQUIRED_QUOTE_LABOR_COLUMNS.issubset(quote_labor_columns):
+    quote_columns = {column["name"] for column in inspector.get_columns("quotes")}
+    if (
+        not REQUIRED_LABOR_TASK_COLUMNS.issubset(labor_columns)
+        or not REQUIRED_QUOTE_LABOR_COLUMNS.issubset(quote_labor_columns)
+        or not REQUIRED_QUOTE_COLUMNS.issubset(quote_columns)
+    ):
         return True
 
     db = SessionLocal()

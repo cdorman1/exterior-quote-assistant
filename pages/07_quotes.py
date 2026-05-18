@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
 from src.auth import require_auth
 from src.database import SessionLocal, init_db
-from src.models import ChangeOrderRate, Quote
+from src.models import ChangeOrderRate, Quote, TakeoffMeasurement
 from src.proposal_generator import generate_proposal_text
 
 require_auth()
@@ -58,6 +60,45 @@ try:
         summary_cols[6].metric("Total cost", f"${quote.total_cost:,.2f}")
         st.metric("Customer price", f"${quote.customer_price:,.2f}")
         st.caption(f"Target margin: {quote.target_margin:.0%}")
+        st.caption(f"Blueprint files on project: {len(quote.project.blueprint_files)}")
+        if quote.notes:
+            st.caption(quote.notes)
+
+        quantity_source_match = re.search(r"Quantity source:\s*([^;]+)", quote.notes or "", re.IGNORECASE)
+        if quantity_source_match:
+            st.caption(f"Quantity source: {quantity_source_match.group(1).strip()}")
+
+        measurement_ids: list[int] = []
+        measurement_match = re.search(r"blueprint measurements:\s*([0-9, ]+)", quote.notes or "", re.IGNORECASE)
+        if measurement_match:
+            measurement_ids = [int(item.strip()) for item in measurement_match.group(1).split(",") if item.strip().isdigit()]
+        if measurement_ids:
+            referenced_measurements = (
+                db.query(TakeoffMeasurement)
+                .filter(TakeoffMeasurement.id.in_(measurement_ids))
+                .all()
+            )
+            if referenced_measurements:
+                st.subheader("Related approved takeoff measurements")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Trade": item.trade,
+                                "Measurement Type": item.measurement_type,
+                                "Quantity": item.quantity,
+                                "Unit": item.unit,
+                                "Source": item.source,
+                                "Confidence": item.confidence_score,
+                                "Approved": item.approved,
+                                "Notes": item.notes,
+                            }
+                            for item in referenced_measurements
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         st.subheader("Labor breakdown")
         labor_breakdown = pd.DataFrame(

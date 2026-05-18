@@ -81,6 +81,18 @@ Manual labor overrides are allowed, but an override reason should be provided to
 
 The labor breakdown is saved with the quote.
 
+## Blueprint Upload and Assisted Takeoff
+
+The app supports uploading blueprint PDF files and attaching them to projects.
+
+It extracts basic PDF text with PyMuPDF and attempts to detect sheet names, sheet numbers, sheet types, and scale text.
+
+This version does not automatically calculate measurements from drawings.
+
+The estimator must manually enter takeoff measurements and mark them approved.
+
+Only approved takeoff measurements can be used in quote calculations.
+
 ## Development Note
 
 During early development, if database models change, delete `data/exterior_quote_assistant.db` and rerun:
@@ -119,8 +131,11 @@ exterior_quote_assistant/
     07_quotes.py
     08_change_orders.py
     09_settings.py
+    10_blueprints.py
+    11_takeoff_measurements.py
   tests/
     test_pricing_engine.py
+    test_blueprint_service.py
 ```
 
 ## MVP Scope
@@ -137,8 +152,14 @@ exterior_quote_assistant/
 
 ## Future Features
 
-- Blueprint upload and measurement extraction
-- OCR, CAD, or takeoff tool integrations
+- PDF scale calibration
+- Interactive tracing
+- Roof area takeoff
+- Siding elevation takeoff
+- AI suggested measurements
+- OCR for scanned plans
+- DXF/CAD parsing
+- Plan revision comparison
 - Multi-line quote builder for complex assemblies
 - Supplier price imports and historical pricing
 - Company branding and editable proposal templates

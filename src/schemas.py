@@ -126,3 +126,66 @@ class QuoteLaborLineItemRead(QuoteLaborLineItemInput):
     id: int
     quote_id: int
     created_at: datetime | None = None
+
+
+class BlueprintFileCreate(BaseModel):
+    project_id: int
+    original_file_name: str
+    stored_file_name: str
+    file_path: str
+    file_type: str
+    file_size_bytes: int
+    plan_version: str | None = None
+    description: str | None = None
+    extracted_text: str | None = None
+    sheet_count: int | None = None
+    notes: str | None = None
+    is_active: bool = True
+
+
+class BlueprintFileRead(BlueprintFileCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    uploaded_at: datetime
+
+
+class BlueprintSheetCreate(BaseModel):
+    blueprint_file_id: int
+    page_number: int
+    sheet_number: str | None = None
+    sheet_name: str | None = None
+    sheet_type: str = "unknown"
+    scale_text: str | None = None
+    calibrated_scale: str | None = None
+    extracted_text: str | None = None
+    confidence_score: float = 0
+
+
+class BlueprintSheetRead(BlueprintSheetCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
+class TakeoffMeasurementCreate(BaseModel):
+    project_id: int
+    blueprint_file_id: int | None = None
+    blueprint_sheet_id: int | None = None
+    trade: str
+    measurement_type: str
+    quantity: float = Field(ge=0)
+    unit: str
+    source: str
+    confidence_score: float = 0
+    approved: bool = False
+    approved_by: str | None = None
+    notes: str | None = None
+
+
+class TakeoffMeasurementRead(TakeoffMeasurementCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime

@@ -38,6 +38,8 @@ class Project(Base):
 
     customer: Mapped[Customer] = relationship(back_populates="projects")
     quotes: Mapped[list["Quote"]] = relationship(back_populates="project")
+    blueprint_files: Mapped[list["BlueprintFile"]] = relationship(back_populates="project")
+    takeoff_measurements: Mapped[list["TakeoffMeasurement"]] = relationship(back_populates="project")
 
 
 class Material(Base):
@@ -118,6 +120,7 @@ class Quote(Base):
     labor_cost: Mapped[float] = mapped_column(Float, default=0)
     total_cost: Mapped[float] = mapped_column(Float, default=0)
     customer_price: Mapped[float] = mapped_column(Float, default=0)
+    notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped[Project] = relationship(back_populates="quotes")
@@ -164,6 +167,69 @@ class QuoteLaborLineItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     quote: Mapped[Quote] = relationship(back_populates="labor_line_items")
+
+
+class BlueprintFile(Base):
+    __tablename__ = "blueprint_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    original_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_version: Mapped[str | None] = mapped_column(String(50))
+    description: Mapped[str | None] = mapped_column(Text)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    sheet_count: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped[Project] = relationship(back_populates="blueprint_files")
+    sheets: Mapped[list["BlueprintSheet"]] = relationship(back_populates="blueprint_file")
+
+
+class BlueprintSheet(Base):
+    __tablename__ = "blueprint_sheets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    blueprint_file_id: Mapped[int] = mapped_column(ForeignKey("blueprint_files.id"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    sheet_number: Mapped[str | None] = mapped_column(String(50))
+    sheet_name: Mapped[str | None] = mapped_column(String(255))
+    sheet_type: Mapped[str] = mapped_column(String(50), default="unknown")
+    scale_text: Mapped[str | None] = mapped_column(String(255))
+    calibrated_scale: Mapped[str | None] = mapped_column(String(255))
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    confidence_score: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    blueprint_file: Mapped[BlueprintFile] = relationship(back_populates="sheets")
+
+
+class TakeoffMeasurement(Base):
+    __tablename__ = "takeoff_measurements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    blueprint_file_id: Mapped[int | None] = mapped_column(ForeignKey("blueprint_files.id"))
+    blueprint_sheet_id: Mapped[int | None] = mapped_column(ForeignKey("blueprint_sheets.id"))
+    trade: Mapped[str] = mapped_column(String(50), nullable=False)
+    measurement_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence_score: Mapped[float] = mapped_column(Float, default=0)
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped[Project] = relationship(back_populates="takeoff_measurements")
+    blueprint_file: Mapped[BlueprintFile | None] = relationship()
+    blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
 
 
 class ChangeOrderRate(Base):

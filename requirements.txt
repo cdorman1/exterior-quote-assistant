@@ -4,3 +4,4 @@ pydantic>=2.7
 pandas>=2.2
 python-dotenv>=1.0
 pytest>=8.0
+PyMuPDF>=1.24

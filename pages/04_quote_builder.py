@@ -12,7 +12,6 @@ from src.constants import (
 )
 from src.database import SessionLocal, init_db
 from src.models import (
-    ComplexityRule,
     LaborTask,
     Material,
     MaterialPrice,
@@ -20,11 +19,9 @@ from src.models import (
     Quote,
     QuoteLaborLineItem,
     QuoteLineItem,
+    TakeoffMeasurement,
 )
 from src.pricing_engine import (
-    RectangularOpening,
-    RectangularWall,
-    TriangularGable,
     calculate_final_complexity_multiplier,
     calculate_labor_cost,
     calculate_labor_summary,
@@ -33,7 +30,6 @@ from src.pricing_engine import (
     calculate_crew_day_labor,
     calculate_hourly_labor,
     calculate_subcontractor_labor,
-    calculate_vinyl_siding_takeoff,
 )
 
 
@@ -94,6 +90,70 @@ def _default_unit_based_rows(tasks: list[LaborTask], measured_quantity: float, f
             }
         )
     return pd.DataFrame(rows)
+
+
+def _takeoff_measurement_label(measurement: TakeoffMeasurement) -> str:
+    source_bits = [f"{measurement.measurement_type}", f"{measurement.quantity:g} {measurement.unit}"]
+    if measurement.blueprint_sheet:
+        sheet_label = measurement.blueprint_sheet.sheet_number or measurement.blueprint_sheet.sheet_name or f"Page {measurement.blueprint_sheet.page_number}"
+        source_bits.append(sheet_label)
+    if measurement.blueprint_file:
+        source_bits.append(measurement.blueprint_file.original_file_name)
+    return " | ".join(source_bits)
+
+
+def _calculate_takeoff_quantity(trade: str, measurements: list[TakeoffMeasurement]) -> dict:
+    total_square_feet = 0.0
+    used_measurements: list[dict] = []
+    for measurement in measurements:
+        quantity = float(measurement.quantity or 0)
+        if quantity <= 0:
+            continue
+        if trade == "roofing" and measurement.measurement_type == "roof_area":
+            if measurement.unit == "square_foot":
+                square_feet = quantity
+                quantity_in_squares = quantity / 100
+            elif measurement.unit == "square":
+                square_feet = quantity * 100
+                quantity_in_squares = quantity
+            else:
+                square_feet = quantity
+                quantity_in_squares = quantity
+            total_square_feet += square_feet
+            used_measurements.append(
+                {
+                    "id": measurement.id,
+                    "measurement_type": measurement.measurement_type,
+                    "quantity": quantity,
+                    "unit": measurement.unit,
+                    "square_feet": square_feet,
+                    "squares": quantity_in_squares,
+                }
+            )
+        elif trade == "siding" and measurement.measurement_type in {"siding_wall_area", "gable_area"}:
+            if measurement.unit == "square_foot":
+                square_feet = quantity
+            elif measurement.unit == "square":
+                square_feet = quantity * 100
+            else:
+                square_feet = quantity
+            total_square_feet += square_feet
+            used_measurements.append(
+                {
+                    "id": measurement.id,
+                    "measurement_type": measurement.measurement_type,
+                    "quantity": quantity,
+                    "unit": measurement.unit,
+                    "square_feet": square_feet,
+                    "squares": square_feet / 100,
+                }
+            )
+    total_squares = round(total_square_feet / 100, 2)
+    return {
+        "total_square_feet": round(total_square_feet, 2),
+        "total_squares": total_squares,
+        "used_measurements": used_measurements,
+    }
 
 
 def _calculate_unit_based_labor(rows: pd.DataFrame, trade: str) -> list[dict]:
@@ -169,6 +229,16 @@ try:
     selected_project = project_options[st.selectbox("Project", list(project_options))]
     allowed_trades = TRADES if selected_project.trade_scope == "combination" else [selected_project.trade_scope]
     trade = st.selectbox("Trade", allowed_trades)
+    approved_measurements = (
+        db.query(TakeoffMeasurement)
+        .filter(
+            TakeoffMeasurement.project_id == selected_project.id,
+            TakeoffMeasurement.trade == trade,
+            TakeoffMeasurement.approved.is_(True),
+        )
+        .order_by(TakeoffMeasurement.created_at.desc())
+        .all()
+    )
 
     materials = db.query(Material).filter(Material.trade == trade, Material.active.is_(True)).order_by(Material.name).all()
     labor_tasks = _filtered_labor_tasks(db, trade, selected_project.project_type)
@@ -189,13 +259,55 @@ try:
         st.subheader("Labor Estimate")
         quote_name = st.text_input("Quote name", value=f"{selected_project.project_name} Quote")
 
-        summary_cols = st.columns(3)
-        measured_quantity = summary_cols[0].number_input("Measured quantity", min_value=0.0, value=10.0, step=1.0)
-        quantity_unit = summary_cols[1].selectbox(
-            "Select quantity unit",
-            ["square", "square_foot", "linear_foot", "each", "job", "allowance"],
-        )
-        stories = summary_cols[2].number_input("Stories", min_value=0.0, value=1.0, step=1.0)
+        quantity_source = st.radio("Quantity source", ["manual", "approved_takeoff"], horizontal=True, index=0)
+        quantity_unit_options = ["square", "square_foot", "linear_foot", "each", "job", "allowance"]
+        if quantity_source == "manual":
+            quantity_cols = st.columns(2)
+            measured_quantity = quantity_cols[0].number_input("Measured quantity", min_value=0.0, value=10.0, step=1.0)
+            quantity_unit = quantity_cols[1].selectbox("Select quantity unit", quantity_unit_options)
+            selected_takeoff_measurements: list[TakeoffMeasurement] = []
+            takeoff_summary = None
+        else:
+            quantity_unit = st.selectbox("Select quantity unit", quantity_unit_options, index=0, disabled=True)
+            if approved_measurements:
+                selected_takeoff_measurements = st.multiselect(
+                    "Approved measurements to use",
+                    approved_measurements,
+                    format_func=_takeoff_measurement_label,
+                )
+                if selected_takeoff_measurements:
+                    takeoff_summary = _calculate_takeoff_quantity(trade, selected_takeoff_measurements)
+                    measured_quantity = takeoff_summary["total_squares"]
+                    st.dataframe(
+                        pd.DataFrame(
+                            [
+                                {
+                                    "Measurement Type": item["measurement_type"],
+                                    "Quantity": item["quantity"],
+                                    "Unit": item["unit"],
+                                    "Square Feet": item["square_feet"],
+                                    "Squares": item["squares"],
+                                }
+                                for item in takeoff_summary["used_measurements"]
+                            ]
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    st.caption(
+                        f"Approved takeoff quantity: {takeoff_summary['total_square_feet']:,.2f} sq ft "
+                        f"({takeoff_summary['total_squares']:,.2f} squares)"
+                    )
+                else:
+                    takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
+                    measured_quantity = 0.0
+                    st.info("Select one or more approved measurements to populate the quote quantity.")
+            else:
+                selected_takeoff_measurements = []
+                takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
+                measured_quantity = 0.0
+                st.info("No approved measurements are available for this project and trade.")
+        stories = st.number_input("Stories", min_value=0.0, value=1.0, step=1.0)
 
         material = material_options[st.selectbox("Material", list(material_options))]
         latest_price = (
@@ -242,6 +354,11 @@ try:
             use_container_width=True,
             hide_index=True,
         )
+        st.caption(f"Quantity source: {quantity_source}")
+        if quantity_source == "approved_takeoff" and takeoff_summary is not None:
+            st.caption(
+                f"Takeoff source: {takeoff_summary['total_square_feet']:,.2f} sq ft / {takeoff_summary['total_squares']:,.2f} squares"
+            )
 
         unit_based_rows = pd.DataFrame()
         if labor_method == "unit_based":
@@ -411,6 +528,14 @@ try:
             labor_line_items,
             trade,
         )
+        takeoff_ids = [item.id for item in selected_takeoff_measurements] if quantity_source == "approved_takeoff" else []
+        if quantity_source == "approved_takeoff" and takeoff_summary is not None:
+            quantity_note = (
+                f"Quantity source: approved_takeoff; blueprint measurements: {', '.join(str(item) for item in takeoff_ids) or 'none'}; "
+                f"{takeoff_summary['total_square_feet']:.2f} sq ft / {takeoff_summary['total_squares']:.2f} squares."
+            )
+        else:
+            quantity_note = f"Quantity source: manual; measured quantity entered directly as {measured_quantity:.2f} {quantity_unit}."
 
         st.session_state.quote_draft = {
             "quote_name": quote_name,
@@ -430,6 +555,9 @@ try:
             "labor_method": labor_method,
             "measured_quantity": measured_quantity,
             "unit": quantity_unit,
+            "quantity_source": quantity_source,
+            "quantity_note": quantity_note,
+            "takeoff_measurement_ids": takeoff_ids,
             "difficulty_label": difficulty_label,
             "final_multiplier": final_multiplier,
             "labor_confidence_level": labor_confidence_level,
@@ -510,6 +638,7 @@ try:
                 labor_cost=draft["totals"]["labor_cost"],
                 total_cost=draft["totals"]["total_cost"],
                 customer_price=draft["totals"]["customer_price"],
+                notes=draft["quantity_note"],
             )
             db.add(quote)
             db.flush()
