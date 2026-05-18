@@ -59,17 +59,15 @@ sudo systemctl status exterior-quote-assistant
 sudo journalctl -u exterior-quote-assistant -f
 ```
 
-The app service listens on `0.0.0.0:8501`. Traefik routes the app for `https://sentinelforge.tech`, `https://www.sentinelforge.tech`, `https://quote.sentinelforge.tech`, and the existing Hostinger hostname.
+The app service listens on `0.0.0.0:8501`. Traefik routes the app at `https://sentinelforge.tech/quote-system`.
 
 To point the domain at the VPS, add DNS records at your domain provider:
 
 ```text
 A     sentinelforge.tech      <your VPS public IPv4>
-A     www                     <your VPS public IPv4>
-A     quote                   <your VPS public IPv4>
 ```
 
-If you want only one endpoint, keep the record for that hostname and remove the others.
+If you want only one endpoint, use just the root domain and the `/quote-system` path.
 
 ## Project Structure
 
