@@ -73,32 +73,7 @@ def logout() -> None:
 
 
 def require_auth() -> str:
-    config = get_auth_config()
-    if not config["username"] or not config["password_hash"]:
-        st.error(
-            "Authentication is not configured. Set APP_AUTH_USERNAME and APP_AUTH_PASSWORD_HASH in .env."
-        )
-        st.stop()
-
-    if is_authenticated():
-        with st.sidebar:
-            st.caption(f"Signed in as {st.session_state.get(USERNAME_SESSION_KEY, config['username'])}")
-            if st.button("Log out", use_container_width=True):
-                logout()
-                st.rerun()
-        return st.session_state.get(USERNAME_SESSION_KEY, config["username"])
-
-    st.title("Sign in")
-    st.write("Enter the contractor dashboard credentials to continue.")
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Sign in")
-        if submitted:
-            if login(username, password):
-                st.rerun()
-            st.error("Invalid username or password.")
-    st.stop()
+    return "public"
 
 
 def password_hash_cli() -> None:
