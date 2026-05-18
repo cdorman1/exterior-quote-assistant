@@ -1,6 +1,6 @@
 PROJECT_TYPES = ["new_construction", "existing_construction"]
-TRADE_SCOPES = ["roofing", "siding", "masonry", "combination"]
-TRADES = ["roofing", "siding", "masonry"]
+TRADE_SCOPES = ["roofing", "siding", "combination"]
+TRADES = ["roofing", "siding"]
 QUOTE_STATUSES = ["draft", "sent", "accepted", "rejected"]
 PROJECT_STATUSES = ["lead", "estimating", "quoted", "won", "lost", "completed"]
 

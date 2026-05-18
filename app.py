@@ -100,7 +100,7 @@ st.markdown(
     """
     <div class="hero">
       <h1>Exterior Quote Assistant</h1>
-      <p>Contractor quoting dashboard for roofing, siding, and masonry work.</p>
+      <p>Contractor quoting dashboard for roofing and siding work.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -112,7 +112,7 @@ st.markdown(
       <div class="card">
         <div class="card-label">Workflow</div>
         <div class="card-title">Quote from measured scope</div>
-        <div class="card-body">Use the quote builder to price roofing, siding, and masonry jobs from manual measurements.</div>
+        <div class="card-body">Use the quote builder to price roofing and siding jobs from manual measurements.</div>
       </div>
       <div class="card">
         <div class="card-label">Data</div>

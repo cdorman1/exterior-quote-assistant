@@ -122,7 +122,7 @@ try:
         """
         <div class="dashboard-hero">
           <h1>Exterior Quote Assistant</h1>
-          <p>Contractor quoting dashboard for roofing, siding, and masonry jobs.</p>
+          <p>Contractor quoting dashboard for roofing and siding jobs.</p>
         </div>
         """,
         unsafe_allow_html=True,

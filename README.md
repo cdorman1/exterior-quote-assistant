@@ -1,6 +1,6 @@
 # Exterior Quote Assistant
 
-Exterior Quote Assistant is an MVP contractor quoting dashboard for roofing, siding, and masonry contractors. It supports new construction jobs quoted from blueprint measurements entered manually and existing construction jobs quoted from field measurements.
+Exterior Quote Assistant is an MVP contractor quoting dashboard for roofing and siding contractors. It supports new construction jobs quoted from blueprint measurements entered manually and existing construction jobs quoted from field measurements.
 
 Version 1 intentionally does not automate blueprint measurement extraction. The scaffold focuses on the pricing engine, database models, seed data, Streamlit dashboard, and a basic quote-to-proposal workflow.
 
@@ -107,7 +107,7 @@ exterior_quote_assistant/
 
 - Customer and project management
 - Project type support for `new_construction` and `existing_construction`
-- Trade scope support for roofing, siding, masonry, and combination jobs
+- Trade scope support for roofing, siding, and combination jobs
 - Seeded material prices, labor tasks, waste rules, complexity rules, and change order rates
 - Manual measured quantity entry from blueprints or field measurements
 - Material cost, labor cost, tax, total cost, and gross-margin customer price calculations

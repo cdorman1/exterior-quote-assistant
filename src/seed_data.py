@@ -35,14 +35,6 @@ MATERIALS = [
     ("Soffit", "siding", "soffit", "linear foot", 0.08, 4.6),
     ("Fascia", "siding", "fascia", "linear foot", 0.08, 3.75),
     ("Trim coil", "siding", "metal", "roll", 0.08, 122),
-    ("Brick", "masonry", "veneer", "each", 0.08, 0.78),
-    ("Concrete block", "masonry", "block", "each", 0.06, 2.85),
-    ("Mortar bag", "masonry", "mortar", "bag", 0.06, 12.5),
-    ("Sand", "masonry", "aggregate", "ton", 0.05, 38),
-    ("Wall ties", "masonry", "accessory", "each", 0.05, 0.22),
-    ("Lintel", "masonry", "steel", "linear foot", 0.05, 18),
-    ("Flashing", "masonry", "flashing", "linear foot", 0.05, 3.85),
-    ("Weep vent", "masonry", "accessory", "each", 0.05, 1.1),
 ]
 
 LABOR_TASKS = [
@@ -53,10 +45,6 @@ LABOR_TASKS = [
     ("Siding install per square", "siding", "square", 190, 1300),
     ("Soffit install per linear foot", "siding", "linear foot", 7.5, 350),
     ("Fascia install per linear foot", "siding", "linear foot", 6.5, 350),
-    ("Masonry demo per square foot", "masonry", "square foot", 6, 650),
-    ("Brick install per square foot", "masonry", "square foot", 24, 1200),
-    ("Block install per square foot", "masonry", "square foot", 18, 1000),
-    ("Tuckpointing per square foot", "masonry", "square foot", 12, 750),
 ]
 
 
@@ -123,7 +111,7 @@ def seed() -> None:
                 )
             )
 
-        for trade in ["roofing", "siding", "masonry"]:
+        for trade in ["roofing", "siding"]:
             db.add_all(
                 [
                     WasteRule(trade=trade, condition_name="Standard", waste_percent=0.10),

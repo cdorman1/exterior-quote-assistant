@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 
+from src.constants import TRADES
 from src.auth import require_auth
 from src.database import SessionLocal, init_db
 from src.models import Material, MaterialPrice
@@ -10,8 +11,14 @@ st.title("Materials")
 init_db()
 db = SessionLocal()
 try:
-    materials = db.query(Material).order_by(Material.trade, Material.name).all()
-    prices = db.query(MaterialPrice).join(Material).order_by(Material.trade, Material.name).all()
+    materials = db.query(Material).filter(Material.trade.in_(TRADES)).order_by(Material.trade, Material.name).all()
+    prices = (
+        db.query(MaterialPrice)
+        .join(Material)
+        .filter(Material.trade.in_(TRADES))
+        .order_by(Material.trade, Material.name)
+        .all()
+    )
 
     st.subheader("Materials")
     st.dataframe(
