@@ -18,6 +18,25 @@ streamlit run app.py
 
 The app uses SQLite by default at `data/exterior_quote_assistant.db`. Copy `.env.example` to `.env` if you want to override defaults.
 
+## Authentication
+
+The app now requires a username and password before any page renders.
+
+Set these in `.env`:
+
+```bash
+APP_AUTH_USERNAME=admin
+APP_AUTH_PASSWORD_HASH=pbkdf2_sha256$260000$...
+```
+
+Generate the password hash locally with:
+
+```bash
+python -m src.auth your-plaintext-password
+```
+
+The command prints a hash you can paste into `.env`.
+
 ## Hostinger VPS Deployment
 
 The `deploy/` directory includes a basic Ubuntu VPS deployment setup using systemd and Traefik.

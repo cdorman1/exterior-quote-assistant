@@ -1,10 +1,12 @@
 import pandas as pd
 import streamlit as st
 
+from src.auth import require_auth
 from src.database import SessionLocal, init_db
 from src.models import ChangeOrderRate, Quote
 from src.proposal_generator import generate_proposal_text
 
+require_auth()
 st.title("Quotes")
 init_db()
 db = SessionLocal()

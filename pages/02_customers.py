@@ -1,9 +1,11 @@
 import pandas as pd
 import streamlit as st
 
+from src.auth import require_auth
 from src.database import SessionLocal, init_db
 from src.models import Customer
 
+require_auth()
 st.title("Customers")
 init_db()
 db = SessionLocal()

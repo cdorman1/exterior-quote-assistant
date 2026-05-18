@@ -1,10 +1,12 @@
 import pandas as pd
 import streamlit as st
 
+from src.auth import require_auth
 from src.constants import PROJECT_STATUSES, PROJECT_TYPES, TRADE_SCOPES
 from src.database import SessionLocal, init_db
 from src.models import Customer, Project
 
+require_auth()
 st.title("Projects")
 init_db()
 db = SessionLocal()

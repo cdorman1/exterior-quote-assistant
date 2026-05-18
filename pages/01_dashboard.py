@@ -2,9 +2,11 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import func
 
+from src.auth import require_auth
 from src.database import SessionLocal, init_db
 from src.models import Customer, Project, Quote
 
+require_auth()
 st.title("Dashboard")
 init_db()
 db = SessionLocal()

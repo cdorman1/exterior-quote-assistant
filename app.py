@@ -1,8 +1,10 @@
 import streamlit as st
 
+from src.auth import require_auth
 from src.database import init_db
 
 st.set_page_config(page_title="Exterior Quote Assistant", layout="wide")
+require_auth()
 init_db()
 
 st.title("Exterior Quote Assistant")

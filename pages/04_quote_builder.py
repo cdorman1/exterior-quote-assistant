@@ -1,5 +1,6 @@
 import streamlit as st
 
+from src.auth import require_auth
 from src.constants import TRADES
 from src.database import SessionLocal, init_db
 from src.models import LaborTask, Material, MaterialPrice, Project, Quote, QuoteLineItem
@@ -9,6 +10,7 @@ from src.pricing_engine import (
     calculate_quote_totals,
 )
 
+require_auth()
 st.title("Quote Builder")
 init_db()
 db = SessionLocal()

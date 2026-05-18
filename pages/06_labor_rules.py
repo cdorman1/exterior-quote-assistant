@@ -1,9 +1,11 @@
 import pandas as pd
 import streamlit as st
 
+from src.auth import require_auth
 from src.database import SessionLocal, init_db
 from src.models import ComplexityRule, LaborTask, WasteRule
 
+require_auth()
 st.title("Labor Rules")
 init_db()
 db = SessionLocal()
