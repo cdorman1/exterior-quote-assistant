@@ -29,6 +29,8 @@ APP_AUTH_USERNAME=admin
 APP_AUTH_PASSWORD_HASH=pbkdf2_sha256$260000$...
 ```
 
+The VPS service reads `/opt/exterior-quote-assistant/.env` directly through systemd, so keep the credentials there and restart the service after changes.
+
 Generate the password hash locally with:
 
 ```bash

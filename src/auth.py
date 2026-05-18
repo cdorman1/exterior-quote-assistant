@@ -6,10 +6,13 @@ import hmac
 import os
 from secrets import compare_digest
 
+from dotenv import load_dotenv
 import streamlit as st
 
 AUTH_SESSION_KEY = "eqa_authenticated"
 USERNAME_SESSION_KEY = "eqa_username"
+
+load_dotenv()
 
 
 def _get_setting(name: str, default: str = "") -> str:
