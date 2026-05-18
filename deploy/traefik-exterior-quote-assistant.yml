@@ -1,0 +1,13 @@
+http:
+  routers:
+    exterior-quote-assistant:
+      rule: "Host(`srv1674962.hstgr.cloud`)"
+      entryPoints:
+        - web
+      service: exterior-quote-assistant
+
+  services:
+    exterior-quote-assistant:
+      loadBalancer:
+        servers:
+          - url: "http://172.17.0.1:8501"

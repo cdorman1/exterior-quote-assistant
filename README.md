@@ -20,7 +20,7 @@ The app uses SQLite by default at `data/exterior_quote_assistant.db`. Copy `.env
 
 ## Hostinger VPS Deployment
 
-The `deploy/` directory includes a basic Ubuntu VPS deployment setup using systemd and nginx.
+The `deploy/` directory includes a basic Ubuntu VPS deployment setup using systemd and Traefik.
 
 On the VPS, run:
 
@@ -38,7 +38,7 @@ sudo systemctl status exterior-quote-assistant
 sudo journalctl -u exterior-quote-assistant -f
 ```
 
-The app service listens on `127.0.0.1:8501`, with nginx proxying public traffic from `http://srv1674962.hstgr.cloud`.
+The app service listens on `0.0.0.0:8501`. Traefik should route `http://srv1674962.hstgr.cloud` to that service using the dynamic config in `deploy/traefik-exterior-quote-assistant.yml`.
 
 ## Project Structure
 

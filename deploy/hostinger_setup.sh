@@ -5,6 +5,7 @@ APP_NAME="exterior-quote-assistant"
 APP_DIR="/opt/${APP_NAME}"
 REPO_URL="https://github.com/cdorman1/exterior-quote-assistant.git"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+TRAEFIK_DYNAMIC_DIR="/etc/traefik/dynamic"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run this script as root or with sudo."
@@ -12,7 +13,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 apt-get update
-apt-get install -y git python3 python3-venv python3-pip nginx
+apt-get install -y git python3 python3-venv python3-pip
 
 if [[ -d "${APP_DIR}/.git" ]]; then
   git -C "${APP_DIR}" pull --ff-only
@@ -32,10 +33,14 @@ systemctl daemon-reload
 systemctl enable "${APP_NAME}"
 systemctl restart "${APP_NAME}"
 
-cp deploy/nginx-exterior-quote-assistant.conf /etc/nginx/sites-available/exterior-quote-assistant
-ln -sf /etc/nginx/sites-available/exterior-quote-assistant /etc/nginx/sites-enabled/exterior-quote-assistant
-nginx -t
-systemctl reload nginx
+if [[ -d "${TRAEFIK_DYNAMIC_DIR}" ]]; then
+  cp deploy/traefik-exterior-quote-assistant.yml "${TRAEFIK_DYNAMIC_DIR}/exterior-quote-assistant.yml"
+  echo "Wrote Traefik dynamic config to ${TRAEFIK_DYNAMIC_DIR}/exterior-quote-assistant.yml"
+  echo "Traefik should reload automatically if file provider is enabled."
+else
+  echo "Traefik dynamic config directory not found at ${TRAEFIK_DYNAMIC_DIR}"
+  echo "Create the directory or place deploy/traefik-exterior-quote-assistant.yml into the Traefik file provider path."
+fi
 
 systemctl status "${APP_NAME}" --no-pager
-echo "Deployment complete. App service is listening on localhost:8501 behind nginx."
+echo "Deployment complete. App service is listening on 0.0.0.0:8501."
