@@ -215,6 +215,407 @@ def _labor_confidence(level_inputs: dict, labor_line_items: list[dict], trade: s
     return "high_confidence", ["Labor estimate looks complete based on selected quantity, labor tasks, and difficulty."]
 
 
+def _trade_display_name(trade: str) -> str:
+    return trade.replace("_", " ").title()
+
+
+def _render_trade_section(db, selected_project: Project, trade: str, section_key: str) -> dict:
+    approved_measurements = (
+        db.query(TakeoffMeasurement)
+        .filter(
+            TakeoffMeasurement.project_id == selected_project.id,
+            TakeoffMeasurement.trade == trade,
+            TakeoffMeasurement.approved.is_(True),
+        )
+        .order_by(TakeoffMeasurement.created_at.desc())
+        .all()
+    )
+    materials = db.query(Material).filter(Material.trade == trade, Material.active.is_(True)).order_by(Material.name).all()
+    labor_tasks = _filtered_labor_tasks(db, trade, selected_project.project_type)
+    if trade == "siding":
+        siding_materials = [m for m in materials if m.unit == "square"]
+        if siding_materials:
+            materials = siding_materials
+
+    if not materials or not labor_tasks:
+        st.warning(f"Seed or add materials and labor tasks for {_trade_display_name(trade)}.")
+        return {"included": False, "trade": trade}
+
+    material_options = {m.name: m for m in materials}
+    st.markdown(f"##### {_trade_display_name(trade)} scope")
+    quantity_source = st.radio(
+        "Quantity source",
+        ["manual", "approved_takeoff"],
+        horizontal=True,
+        index=0,
+        key=f"{section_key}_quantity_source",
+    )
+    quantity_unit_options = ["square", "square_foot", "linear_foot", "each", "job", "allowance"]
+    if quantity_source == "manual":
+        quantity_cols = st.columns(2)
+        measured_quantity = quantity_cols[0].number_input(
+            "Measured quantity",
+            min_value=0.0,
+            value=10.0,
+            step=1.0,
+            key=f"{section_key}_measured_quantity",
+        )
+        quantity_unit = quantity_cols[1].selectbox(
+            "Select quantity unit",
+            quantity_unit_options,
+            key=f"{section_key}_quantity_unit",
+        )
+        selected_takeoff_measurements: list[TakeoffMeasurement] = []
+        takeoff_summary = None
+    else:
+        quantity_unit = st.selectbox(
+            "Select quantity unit",
+            quantity_unit_options,
+            index=0,
+            disabled=True,
+            key=f"{section_key}_quantity_unit",
+        )
+        if approved_measurements:
+            selected_takeoff_measurements = st.multiselect(
+                "Approved measurements to use",
+                approved_measurements,
+                format_func=_takeoff_measurement_label,
+                key=f"{section_key}_takeoff_measurements",
+            )
+            if selected_takeoff_measurements:
+                takeoff_summary = _calculate_takeoff_quantity(trade, selected_takeoff_measurements)
+                measured_quantity = takeoff_summary["total_squares"]
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Measurement Type": item["measurement_type"],
+                                "Quantity": item["quantity"],
+                                "Unit": item["unit"],
+                                "Square Feet": item["square_feet"],
+                                "Squares": item["squares"],
+                            }
+                            for item in takeoff_summary["used_measurements"]
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    f"Approved takeoff quantity: {takeoff_summary['total_square_feet']:,.2f} sq ft "
+                    f"({takeoff_summary['total_squares']:,.2f} squares)"
+                )
+            else:
+                takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
+                measured_quantity = 0.0
+                st.info("Select one or more approved measurements to populate the quote quantity.")
+        else:
+            selected_takeoff_measurements = []
+            takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
+            measured_quantity = 0.0
+            st.info("No approved measurements are available for this project and trade.")
+
+    stories = st.number_input("Stories", min_value=0.0, value=1.0, step=1.0, key=f"{section_key}_stories")
+    material = material_options[st.selectbox("Material", list(material_options), key=f"{section_key}_material")]
+    latest_price = (
+        db.query(MaterialPrice)
+        .filter(MaterialPrice.material_id == material.id)
+        .order_by(MaterialPrice.effective_date.desc())
+        .first()
+    )
+    material_unit_cost = latest_price.unit_cost if latest_price else 0.0
+    waste_factor = st.number_input(
+        "Waste factor",
+        min_value=0.0,
+        value=float(material.default_waste_factor),
+        step=0.01,
+        key=f"{section_key}_waste_factor",
+    )
+    labor_method_label = st.selectbox(
+        "Select labor method",
+        list(LABOR_METHOD_LABELS.values()),
+        key=f"{section_key}_labor_method",
+    )
+    labor_method = next(code for code, label in LABOR_METHOD_LABELS.items() if label == labor_method_label)
+    difficulty_label = st.selectbox(
+        "Select difficulty",
+        list(LABOR_DIFFICULTY_MULTIPLIERS.keys()),
+        key=f"{section_key}_difficulty",
+    )
+    base_difficulty_multiplier = LABOR_DIFFICULTY_MULTIPLIERS[difficulty_label]
+    condition_options = LABOR_CONDITION_MULTIPLIERS.get(trade, {})
+    selected_conditions = [
+        condition_name
+        for condition_name in condition_options
+        if st.checkbox(condition_name.replace("_", " ").title(), key=f"{section_key}_condition_{condition_name}")
+    ]
+    condition_multipliers = _selected_condition_multipliers(trade, selected_conditions)
+    final_multiplier = calculate_final_complexity_multiplier(base_difficulty_multiplier, condition_multipliers)
+    st.caption(f"Final complexity multiplier: {final_multiplier:.2f}")
+
+    access_label = ", ".join(selected_conditions) if selected_conditions else "Not specified"
+    st.markdown("**Project summary**")
+    st.dataframe(
+        pd.DataFrame(
+            _project_summary(
+                selected_project,
+                trade,
+                measured_quantity,
+                quantity_unit,
+                material.name,
+                stories,
+                difficulty_label.replace("_", " ").title(),
+                access_label,
+            ),
+            columns=["Field", "Value"],
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption(f"Quantity source: {quantity_source}")
+    if quantity_source == "approved_takeoff" and takeoff_summary is not None:
+        st.caption(
+            f"Takeoff source: {takeoff_summary['total_square_feet']:,.2f} sq ft / {takeoff_summary['total_squares']:,.2f} squares"
+        )
+
+    unit_based_rows = pd.DataFrame()
+    if labor_method == "unit_based":
+        default_rows = _default_unit_based_rows(labor_tasks, measured_quantity, final_multiplier)
+        if not default_rows.empty:
+            unit_based_rows = st.data_editor(
+                default_rows,
+                use_container_width=True,
+                num_rows="dynamic",
+                key=f"{section_key}_unit_based_labor_editor",
+                column_config={
+                    "include": st.column_config.CheckboxColumn("Include"),
+                    "task_name": st.column_config.TextColumn("Task name"),
+                    "quantity": st.column_config.NumberColumn("Quantity", min_value=0.0, step=0.1),
+                    "unit": st.column_config.TextColumn("Unit"),
+                    "base_rate": st.column_config.NumberColumn("Base labor rate", min_value=0.0, step=1.0),
+                    "minimum_charge": st.column_config.NumberColumn("Minimum charge", min_value=0.0, step=1.0),
+                    "complexity_multiplier": st.column_config.NumberColumn("Complexity multiplier", min_value=0.0, step=0.01),
+                    "calculated_cost": st.column_config.NumberColumn("Calculated cost", disabled=True),
+                    "manual_override_cost": st.column_config.NumberColumn("Manual override cost", min_value=0.0, step=1.0),
+                    "override_reason": st.column_config.TextColumn("Override reason"),
+                    "final_cost": st.column_config.NumberColumn("Final cost", disabled=True),
+                    "notes": st.column_config.TextColumn("Notes"),
+                },
+                disabled=["calculated_cost", "final_cost"],
+            )
+        else:
+            st.info("No labor tasks are available for the selected project type.")
+    elif labor_method == "crew_day":
+        crew_day_cost = st.number_input("Crew day cost", min_value=0.0, value=1200.0, step=50.0, key=f"{section_key}_crew_day_cost")
+        estimated_crew_days = st.number_input("Estimated crew days", min_value=0.0, value=1.0, step=0.25, key=f"{section_key}_crew_days")
+        manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0, key=f"{section_key}_crew_override")
+        override_reason = st.text_input("Override reason", key=f"{section_key}_crew_reason")
+    elif labor_method == "hourly":
+        estimated_labor_hours = st.number_input("Estimated labor hours", min_value=0.0, value=8.0, step=1.0, key=f"{section_key}_hours")
+        burdened_hourly_rate = st.number_input("Burdened hourly rate", min_value=0.0, value=85.0, step=5.0, key=f"{section_key}_hourly_rate")
+        manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0, key=f"{section_key}_hourly_override")
+        override_reason = st.text_input("Override reason", key=f"{section_key}_hourly_reason")
+    else:
+        subcontractor_quote_amount = st.number_input("Subcontractor quote amount", min_value=0.0, value=2500.0, step=50.0, key=f"{section_key}_sub_quote")
+        project_management_markup_percent = st.number_input(
+            "Project management markup percent",
+            min_value=0.0,
+            value=0.10,
+            step=0.01,
+            key=f"{section_key}_sub_markup",
+        )
+        manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0, key=f"{section_key}_sub_override")
+        override_reason = st.text_input("Override reason", key=f"{section_key}_sub_reason")
+
+    return {
+        "included": True,
+        "trade": trade,
+        "quote_name": f"{selected_project.project_name} Quote",
+        "project_id": selected_project.id,
+        "material": material,
+        "material_unit_cost": material_unit_cost,
+        "waste_factor": waste_factor,
+        "material_line_items": [],
+        "labor_tasks": labor_tasks,
+        "labor_line_items": [],
+        "totals": {},
+        "permit_cost": 0.0,
+        "disposal_cost": 0.0,
+        "equipment_cost": 0.0,
+        "overhead_cost": 0.0,
+        "target_margin": 0.40,
+        "tax_rate": 0.0,
+        "labor_method": labor_method,
+        "measured_quantity": measured_quantity,
+        "unit": quantity_unit,
+        "quantity_source": quantity_source,
+        "takeoff_summary": takeoff_summary,
+        "takeoff_measurement_ids": [item.id for item in selected_takeoff_measurements] if quantity_source == "approved_takeoff" else [],
+        "quantity_note": "",
+        "difficulty_label": difficulty_label,
+        "final_multiplier": final_multiplier,
+        "labor_confidence_level": "needs_review",
+        "labor_reasons": [],
+        "labor_summary": {},
+        "stories": stories,
+        "access_label": access_label,
+        "selected_conditions": selected_conditions,
+        "unit_based_rows": unit_based_rows,
+        "crew_day_cost": locals().get("crew_day_cost"),
+        "estimated_crew_days": locals().get("estimated_crew_days"),
+        "hourly_labor_hours": locals().get("estimated_labor_hours"),
+        "burdened_hourly_rate": locals().get("burdened_hourly_rate"),
+        "subcontractor_quote_amount": locals().get("subcontractor_quote_amount"),
+        "project_management_markup_percent": locals().get("project_management_markup_percent"),
+        "manual_override_cost": locals().get("manual_override_cost"),
+        "override_reason": locals().get("override_reason", ""),
+    }
+
+
+def _calculate_trade_section(section: dict) -> dict:
+    trade = section["trade"]
+    material = section["material"]
+    material_unit_cost = section["material_unit_cost"]
+    measured_quantity = float(section["measured_quantity"] or 0)
+    waste_factor = float(section.get("waste_factor", material.default_waste_factor) if isinstance(section.get("waste_factor"), (int, float)) else material.default_waste_factor)
+    if trade == "siding" and section["quantity_source"] == "approved_takeoff" and section.get("takeoff_summary") is not None:
+        measured_quantity = section["takeoff_summary"]["total_squares"]
+    material_cost = calculate_material_cost(measured_quantity, material_unit_cost, waste_factor)
+    material_line_items = [
+        {
+            "trade": trade,
+            "item_type": "material",
+            "description": material.name,
+            "quantity": measured_quantity,
+            "unit": material.unit,
+            "unit_cost": material_unit_cost,
+            "waste_factor": waste_factor,
+            "complexity_multiplier": 1.0,
+            "line_cost": material_cost,
+        }
+    ]
+
+    labor_method = section["labor_method"]
+    final_multiplier = section["final_multiplier"]
+    if labor_method == "unit_based":
+        labor_line_items = _calculate_unit_based_labor(section["unit_based_rows"], trade)
+    elif labor_method == "crew_day":
+        labor_result = calculate_crew_day_labor(
+            crew_day_cost=section["crew_day_cost"],
+            estimated_days=section["estimated_crew_days"],
+            complexity_multiplier=final_multiplier,
+            manual_override_cost=section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+        )
+        labor_line_items = [
+            {
+                "trade": trade,
+                "labor_method": labor_method,
+                "task_name": "Crew day labor",
+                "quantity": section["estimated_crew_days"],
+                "unit": "day",
+                "base_rate": section["crew_day_cost"],
+                "complexity_multiplier": final_multiplier,
+                "minimum_charge": 0.0,
+                "calculated_cost": labor_result["calculated_cost"],
+                "manual_override_cost": section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+                "final_cost": labor_result["final_cost"],
+                "override_reason": section["override_reason"],
+                "notes": "",
+                "manual_override_applied": labor_result["manual_override_applied"],
+                "minimum_charge_applied": labor_result["minimum_charge_applied"],
+            }
+        ]
+    elif labor_method == "hourly":
+        labor_result = calculate_hourly_labor(
+            labor_hours=section["hourly_labor_hours"],
+            burdened_hourly_rate=section["burdened_hourly_rate"],
+            complexity_multiplier=final_multiplier,
+            manual_override_cost=section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+        )
+        labor_line_items = [
+            {
+                "trade": trade,
+                "labor_method": labor_method,
+                "task_name": "Hourly labor",
+                "quantity": section["hourly_labor_hours"],
+                "unit": "hour",
+                "base_rate": section["burdened_hourly_rate"],
+                "complexity_multiplier": final_multiplier,
+                "minimum_charge": 0.0,
+                "calculated_cost": labor_result["calculated_cost"],
+                "manual_override_cost": section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+                "final_cost": labor_result["final_cost"],
+                "override_reason": section["override_reason"],
+                "notes": "",
+                "manual_override_applied": labor_result["manual_override_applied"],
+                "minimum_charge_applied": labor_result["minimum_charge_applied"],
+            }
+        ]
+    else:
+        labor_result = calculate_subcontractor_labor(
+            subcontractor_quote_amount=section["subcontractor_quote_amount"],
+            project_management_markup_percent=section["project_management_markup_percent"],
+            manual_override_cost=section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+        )
+        labor_line_items = [
+            {
+                "trade": trade,
+                "labor_method": labor_method,
+                "task_name": "Subcontractor quote",
+                "quantity": 1.0,
+                "unit": "job",
+                "base_rate": section["subcontractor_quote_amount"],
+                "complexity_multiplier": 1.0,
+                "minimum_charge": 0.0,
+                "calculated_cost": labor_result["calculated_cost"],
+                "manual_override_cost": section["manual_override_cost"] if section["manual_override_cost"] > 0 else None,
+                "final_cost": labor_result["final_cost"],
+                "override_reason": section["override_reason"],
+                "notes": f"Project management markup: {section['project_management_markup_percent']:.2%}",
+                "manual_override_applied": labor_result["manual_override_applied"],
+                "minimum_charge_applied": labor_result["minimum_charge_applied"],
+            }
+        ]
+
+    totals = calculate_quote_totals(
+        material_line_items,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.40,
+        0.0,
+        labor_line_items=labor_line_items,
+    )
+    labor_summary = calculate_labor_summary(labor_line_items)
+    labor_confidence_level, labor_reasons = _labor_confidence(
+        {
+            "measured_quantity": measured_quantity,
+            "selected_conditions": section["selected_conditions"],
+        },
+        labor_line_items,
+        trade,
+    )
+    if section["quantity_source"] == "approved_takeoff" and section.get("takeoff_summary") is not None:
+        quantity_note = (
+            f"Quantity source: approved_takeoff; blueprint measurements: {', '.join(str(item) for item in section['takeoff_measurement_ids']) or 'none'}; "
+            f"{section['takeoff_summary']['total_square_feet']:.2f} sq ft / {section['takeoff_summary']['total_squares']:.2f} squares."
+        )
+    else:
+        quantity_note = f"Quantity source: manual; measured quantity entered directly as {measured_quantity:.2f} {section['unit']}."
+
+    return {
+        **section,
+        "material_line_items": material_line_items,
+        "labor_line_items": labor_line_items,
+        "totals": totals,
+        "labor_summary": labor_summary,
+        "labor_confidence_level": labor_confidence_level,
+        "labor_reasons": labor_reasons,
+        "quantity_note": quantity_note,
+    }
+
+
 require_auth()
 st.title("Quote Builder")
 init_db()
@@ -227,287 +628,74 @@ try:
 
     project_options = {f"{p.project_name} - {p.customer.name} ({p.id})": p for p in projects}
     selected_project = project_options[st.selectbox("Project", list(project_options))]
-    allowed_trades = TRADES if selected_project.trade_scope == "combination" else [selected_project.trade_scope]
-    trade = st.selectbox("Trade", allowed_trades)
-    approved_measurements = (
-        db.query(TakeoffMeasurement)
-        .filter(
-            TakeoffMeasurement.project_id == selected_project.id,
-            TakeoffMeasurement.trade == trade,
-            TakeoffMeasurement.approved.is_(True),
-        )
-        .order_by(TakeoffMeasurement.created_at.desc())
-        .all()
-    )
+    if "quote_draft" not in st.session_state:
+        st.session_state.quote_draft = None
 
-    materials = db.query(Material).filter(Material.trade == trade, Material.active.is_(True)).order_by(Material.name).all()
-    labor_tasks = _filtered_labor_tasks(db, trade, selected_project.project_type)
-    if not materials or not labor_tasks:
-        st.warning("Seed or add materials and labor tasks for this trade.")
-        st.stop()
+    if selected_project.trade_scope == "combination":
+        st.info("Combination jobs now default to both roofing and siding in one quote. Uncheck a section if it is not needed.")
+        active_trades = [
+            trade
+            for trade in TRADES
+            if st.checkbox(f"Include {_trade_display_name(trade)} scope", value=True, key=f"include_{trade}")
+        ]
+    else:
+        active_trades = [selected_project.trade_scope]
 
-    if trade == "siding":
-        siding_materials = [m for m in materials if m.unit == "square"]
-        if siding_materials:
-            materials = siding_materials
+    shared_cols = st.columns(4)
+    permit_cost = shared_cols[0].number_input("Permit cost", min_value=0.0, value=0.0, step=50.0)
+    disposal_cost = shared_cols[1].number_input("Disposal cost", min_value=0.0, value=0.0, step=50.0)
+    equipment_cost = shared_cols[2].number_input("Equipment cost", min_value=0.0, value=0.0, step=50.0)
+    overhead_cost = shared_cols[3].number_input("Overhead cost", min_value=0.0, value=0.0, step=50.0)
+    pricing_cols = st.columns(2)
+    target_margin = pricing_cols[0].number_input("Target margin", min_value=0.0, max_value=0.95, value=0.40, step=0.01)
+    tax_rate = pricing_cols[1].number_input("Tax rate", min_value=0.0, max_value=0.20, value=0.0, step=0.01)
 
-    material_options = {m.name: m for m in materials}
     if "quote_draft" not in st.session_state:
         st.session_state.quote_draft = None
 
     with st.form("quote_builder"):
         st.subheader("Labor Estimate")
         quote_name = st.text_input("Quote name", value=f"{selected_project.project_name} Quote")
+        section_inputs = []
+        for trade in active_trades:
+            with st.expander(f"{_trade_display_name(trade)} scope", expanded=True):
+                section_inputs.append(_render_trade_section(db, selected_project, trade, trade))
 
-        quantity_source = st.radio("Quantity source", ["manual", "approved_takeoff"], horizontal=True, index=0)
-        quantity_unit_options = ["square", "square_foot", "linear_foot", "each", "job", "allowance"]
-        if quantity_source == "manual":
-            quantity_cols = st.columns(2)
-            measured_quantity = quantity_cols[0].number_input("Measured quantity", min_value=0.0, value=10.0, step=1.0)
-            quantity_unit = quantity_cols[1].selectbox("Select quantity unit", quantity_unit_options)
-            selected_takeoff_measurements: list[TakeoffMeasurement] = []
-            takeoff_summary = None
-        else:
-            quantity_unit = st.selectbox("Select quantity unit", quantity_unit_options, index=0, disabled=True)
-            if approved_measurements:
-                selected_takeoff_measurements = st.multiselect(
-                    "Approved measurements to use",
-                    approved_measurements,
-                    format_func=_takeoff_measurement_label,
-                )
-                if selected_takeoff_measurements:
-                    takeoff_summary = _calculate_takeoff_quantity(trade, selected_takeoff_measurements)
-                    measured_quantity = takeoff_summary["total_squares"]
-                    st.dataframe(
-                        pd.DataFrame(
-                            [
-                                {
-                                    "Measurement Type": item["measurement_type"],
-                                    "Quantity": item["quantity"],
-                                    "Unit": item["unit"],
-                                    "Square Feet": item["square_feet"],
-                                    "Squares": item["squares"],
-                                }
-                                for item in takeoff_summary["used_measurements"]
-                            ]
-                        ),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                    st.caption(
-                        f"Approved takeoff quantity: {takeoff_summary['total_square_feet']:,.2f} sq ft "
-                        f"({takeoff_summary['total_squares']:,.2f} squares)"
-                    )
-                else:
-                    takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
-                    measured_quantity = 0.0
-                    st.info("Select one or more approved measurements to populate the quote quantity.")
-            else:
-                selected_takeoff_measurements = []
-                takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
-                measured_quantity = 0.0
-                st.info("No approved measurements are available for this project and trade.")
-        stories = st.number_input("Stories", min_value=0.0, value=1.0, step=1.0)
-
-        material = material_options[st.selectbox("Material", list(material_options))]
-        latest_price = (
-            db.query(MaterialPrice)
-            .filter(MaterialPrice.material_id == material.id)
-            .order_by(MaterialPrice.effective_date.desc())
-            .first()
-        )
-        material_unit_cost = latest_price.unit_cost if latest_price else 0.0
-        waste_factor = st.number_input("Waste factor", min_value=0.0, value=float(material.default_waste_factor), step=0.01)
-
-        labor_method_label = st.selectbox("Select labor method", list(LABOR_METHOD_LABELS.values()))
-        labor_method = next(code for code, label in LABOR_METHOD_LABELS.items() if label == labor_method_label)
-
-        difficulty_label = st.selectbox("Select difficulty", list(LABOR_DIFFICULTY_MULTIPLIERS.keys()))
-        base_difficulty_multiplier = LABOR_DIFFICULTY_MULTIPLIERS[difficulty_label]
-
-        condition_options = LABOR_CONDITION_MULTIPLIERS.get(trade, {})
-        selected_conditions = [
-            condition_name
-            for condition_name in condition_options
-            if st.checkbox(condition_name.replace("_", " ").title(), key=f"condition_{trade}_{condition_name}")
-        ]
-        condition_multipliers = _selected_condition_multipliers(trade, selected_conditions)
-        final_multiplier = calculate_final_complexity_multiplier(base_difficulty_multiplier, condition_multipliers)
-        st.caption(f"Final complexity multiplier: {final_multiplier:.2f}")
-
-        access_label = ", ".join(selected_conditions) if selected_conditions else "Not specified"
-        st.markdown("**Project summary**")
-        st.dataframe(
-            pd.DataFrame(
-                _project_summary(
-                    selected_project,
-                    trade,
-                    measured_quantity,
-                    quantity_unit,
-                    material.name,
-                    stories,
-                    difficulty_label.replace("_", " ").title(),
-                    access_label,
-                ),
-                columns=["Field", "Value"],
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-        st.caption(f"Quantity source: {quantity_source}")
-        if quantity_source == "approved_takeoff" and takeoff_summary is not None:
-            st.caption(
-                f"Takeoff source: {takeoff_summary['total_square_feet']:,.2f} sq ft / {takeoff_summary['total_squares']:,.2f} squares"
-            )
-
-        unit_based_rows = pd.DataFrame()
-        if labor_method == "unit_based":
-            default_rows = _default_unit_based_rows(labor_tasks, measured_quantity, final_multiplier)
-            if not default_rows.empty:
-                unit_based_rows = st.data_editor(
-                    default_rows,
-                    use_container_width=True,
-                    num_rows="dynamic",
-                    key="unit_based_labor_editor",
-                    column_config={
-                        "include": st.column_config.CheckboxColumn("Include"),
-                        "task_name": st.column_config.TextColumn("Task name"),
-                        "quantity": st.column_config.NumberColumn("Quantity", min_value=0.0, step=0.1),
-                        "unit": st.column_config.TextColumn("Unit"),
-                        "base_rate": st.column_config.NumberColumn("Base labor rate", min_value=0.0, step=1.0),
-                        "minimum_charge": st.column_config.NumberColumn("Minimum charge", min_value=0.0, step=1.0),
-                        "complexity_multiplier": st.column_config.NumberColumn("Complexity multiplier", min_value=0.0, step=0.01),
-                        "calculated_cost": st.column_config.NumberColumn("Calculated cost", disabled=True),
-                        "manual_override_cost": st.column_config.NumberColumn("Manual override cost", min_value=0.0, step=1.0),
-                        "override_reason": st.column_config.TextColumn("Override reason"),
-                        "final_cost": st.column_config.NumberColumn("Final cost", disabled=True),
-                        "notes": st.column_config.TextColumn("Notes"),
-                    },
-                    disabled=["calculated_cost", "final_cost"],
-                )
-            else:
-                st.info("No labor tasks are available for the selected project type.")
-        elif labor_method == "crew_day":
-            crew_day_cost = st.number_input("Crew day cost", min_value=0.0, value=1200.0, step=50.0)
-            estimated_crew_days = st.number_input("Estimated crew days", min_value=0.0, value=1.0, step=0.25)
-            manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0)
-            override_reason = st.text_input("Override reason")
-        elif labor_method == "hourly":
-            estimated_labor_hours = st.number_input("Estimated labor hours", min_value=0.0, value=8.0, step=1.0)
-            burdened_hourly_rate = st.number_input("Burdened hourly rate", min_value=0.0, value=85.0, step=5.0)
-            manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0)
-            override_reason = st.text_input("Override reason")
-        else:
-            subcontractor_quote_amount = st.number_input("Subcontractor quote amount", min_value=0.0, value=2500.0, step=50.0)
-            project_management_markup_percent = st.number_input("Project management markup percent", min_value=0.0, value=0.10, step=0.01)
-            manual_override_cost = st.number_input("Manual override cost", min_value=0.0, value=0.0, step=50.0)
-            override_reason = st.text_input("Override reason")
-
-        st.subheader("Other costs and pricing")
-        permit_cost = st.number_input("Permit cost", min_value=0.0, value=0.0, step=50.0)
-        disposal_cost = st.number_input("Disposal cost", min_value=0.0, value=0.0, step=50.0)
-        equipment_cost = st.number_input("Equipment cost", min_value=0.0, value=0.0, step=50.0)
-        overhead_cost = st.number_input("Overhead cost", min_value=0.0, value=0.0, step=50.0)
-        target_margin = st.number_input("Target margin", min_value=0.0, max_value=0.95, value=0.40, step=0.01)
-        tax_rate = st.number_input("Tax rate", min_value=0.0, max_value=0.20, value=0.0, step=0.01)
-        calculate_clicked = st.form_submit_button("Calculate Labor")
+        calculate_clicked = st.form_submit_button("Calculate Quote")
 
     if calculate_clicked:
-        material_cost = calculate_material_cost(measured_quantity, material_unit_cost, waste_factor)
-        material_line_items = [
-            {
-                "trade": trade,
-                "item_type": "material",
-                "description": material.name,
-                "quantity": measured_quantity,
-                "unit": material.unit,
-                "unit_cost": material_unit_cost,
-                "waste_factor": waste_factor,
-                "complexity_multiplier": 1.0,
-                "line_cost": material_cost,
-            }
-        ]
+        sections = [_calculate_trade_section(section) for section in section_inputs if section.get("included", True)]
+        if not sections:
+            st.warning("Select at least one trade section before calculating the quote.")
+            st.stop()
 
-        if labor_method == "unit_based":
-            labor_line_items = _calculate_unit_based_labor(unit_based_rows, trade)
-        elif labor_method == "crew_day":
-            labor_result = calculate_crew_day_labor(
-                crew_day_cost=crew_day_cost,
-                estimated_days=estimated_crew_days,
-                complexity_multiplier=final_multiplier,
-                manual_override_cost=manual_override_cost if manual_override_cost > 0 else None,
-            )
-            labor_line_items = [
+        material_line_items: list[dict] = []
+        labor_line_items: list[dict] = []
+        section_summaries: list[dict] = []
+        quantity_notes: list[str] = []
+        labor_reasons: list[str] = []
+        section_confidences: list[str] = []
+        for section in sections:
+            material_line_items.extend(section["material_line_items"])
+            labor_line_items.extend(section["labor_line_items"])
+            section_summaries.append(
                 {
-                    "trade": trade,
-                    "labor_method": labor_method,
-                    "task_name": "Crew day labor",
-                    "quantity": estimated_crew_days,
-                    "unit": "day",
-                    "base_rate": crew_day_cost,
-                    "complexity_multiplier": final_multiplier,
-                    "minimum_charge": 0.0,
-                    "calculated_cost": labor_result["calculated_cost"],
-                    "manual_override_cost": manual_override_cost if manual_override_cost > 0 else None,
-                    "final_cost": labor_result["final_cost"],
-                    "override_reason": override_reason,
-                    "notes": "",
-                    "manual_override_applied": labor_result["manual_override_applied"],
-                    "minimum_charge_applied": labor_result["minimum_charge_applied"],
+                    "trade": section["trade"],
+                    "measured_quantity": section["measured_quantity"],
+                    "unit": section["unit"],
+                    "material_name": section["material"].name,
+                    "stories": section["stories"],
+                    "difficulty_label": section["difficulty_label"],
+                    "access_label": section["access_label"],
+                    "labor_summary": section["labor_summary"],
+                    "labor_confidence_level": section["labor_confidence_level"],
+                    "labor_reasons": section["labor_reasons"],
+                    "labor_line_items": section["labor_line_items"],
                 }
-            ]
-        elif labor_method == "hourly":
-            labor_result = calculate_hourly_labor(
-                labor_hours=estimated_labor_hours,
-                burdened_hourly_rate=burdened_hourly_rate,
-                complexity_multiplier=final_multiplier,
-                manual_override_cost=manual_override_cost if manual_override_cost > 0 else None,
             )
-            labor_line_items = [
-                {
-                    "trade": trade,
-                    "labor_method": labor_method,
-                    "task_name": "Hourly labor",
-                    "quantity": estimated_labor_hours,
-                    "unit": "hour",
-                    "base_rate": burdened_hourly_rate,
-                    "complexity_multiplier": final_multiplier,
-                    "minimum_charge": 0.0,
-                    "calculated_cost": labor_result["calculated_cost"],
-                    "manual_override_cost": manual_override_cost if manual_override_cost > 0 else None,
-                    "final_cost": labor_result["final_cost"],
-                    "override_reason": override_reason,
-                    "notes": "",
-                    "manual_override_applied": labor_result["manual_override_applied"],
-                    "minimum_charge_applied": labor_result["minimum_charge_applied"],
-                }
-            ]
-        else:
-            labor_result = calculate_subcontractor_labor(
-                subcontractor_quote_amount=subcontractor_quote_amount,
-                project_management_markup_percent=project_management_markup_percent,
-                manual_override_cost=manual_override_cost if manual_override_cost > 0 else None,
-            )
-            calculated_cost = labor_result["calculated_cost"]
-            labor_line_items = [
-                {
-                    "trade": trade,
-                    "labor_method": labor_method,
-                    "task_name": "Subcontractor quote",
-                    "quantity": 1.0,
-                    "unit": "job",
-                    "base_rate": subcontractor_quote_amount,
-                    "complexity_multiplier": 1.0,
-                    "minimum_charge": 0.0,
-                    "calculated_cost": calculated_cost,
-                    "manual_override_cost": manual_override_cost if manual_override_cost > 0 else None,
-                    "final_cost": labor_result["final_cost"],
-                    "override_reason": override_reason,
-                    "notes": f"Project management markup: {project_management_markup_percent:.2%}",
-                    "manual_override_applied": labor_result["manual_override_applied"],
-                    "minimum_charge_applied": labor_result["minimum_charge_applied"],
-                }
-            ]
+            quantity_notes.append(section["quantity_note"])
+            labor_reasons.extend([f"{_trade_display_name(section['trade'])}: {reason}" for reason in section["labor_reasons"]])
+            section_confidences.append(section["labor_confidence_level"])
 
         totals = calculate_quote_totals(
             material_line_items,
@@ -520,29 +708,18 @@ try:
             labor_line_items=labor_line_items,
         )
         labor_summary = calculate_labor_summary(labor_line_items)
-        labor_confidence_level, labor_reasons = _labor_confidence(
-            {
-                "measured_quantity": measured_quantity,
-                "selected_conditions": selected_conditions,
-            },
-            labor_line_items,
-            trade,
-        )
-        takeoff_ids = [item.id for item in selected_takeoff_measurements] if quantity_source == "approved_takeoff" else []
-        if quantity_source == "approved_takeoff" and takeoff_summary is not None:
-            quantity_note = (
-                f"Quantity source: approved_takeoff; blueprint measurements: {', '.join(str(item) for item in takeoff_ids) or 'none'}; "
-                f"{takeoff_summary['total_square_feet']:.2f} sq ft / {takeoff_summary['total_squares']:.2f} squares."
-            )
-        else:
-            quantity_note = f"Quantity source: manual; measured quantity entered directly as {measured_quantity:.2f} {quantity_unit}."
+        labor_confidence_level = "high_confidence" if all(level == "high_confidence" for level in section_confidences) else "needs_review"
+        if labor_confidence_level == "high_confidence":
+            labor_reasons = ["Labor estimate looks complete based on selected quantity, labor tasks, and difficulty."]
+        takeoff_ids = [item for section in sections for item in section["takeoff_measurement_ids"]]
+        quantity_note = " | ".join(quantity_notes)
 
         st.session_state.quote_draft = {
             "quote_name": quote_name,
             "project_id": selected_project.id,
-            "trade": trade,
-            "material": material,
-            "material_unit_cost": material_unit_cost,
+            "trade": "combination" if len(sections) > 1 else sections[0]["trade"],
+            "material": material_line_items[0] if material_line_items else None,
+            "material_unit_cost": 0.0,
             "material_line_items": material_line_items,
             "labor_line_items": labor_line_items,
             "totals": totals,
@@ -552,20 +729,21 @@ try:
             "overhead_cost": overhead_cost,
             "target_margin": target_margin,
             "tax_rate": tax_rate,
-            "labor_method": labor_method,
-            "measured_quantity": measured_quantity,
-            "unit": quantity_unit,
-            "quantity_source": quantity_source,
+            "labor_method": "combination" if len(sections) > 1 else sections[0]["labor_method"],
+            "measured_quantity": sum(float(section["measured_quantity"] or 0) for section in sections),
+            "unit": "multiple" if len(sections) > 1 else sections[0]["unit"],
+            "quantity_source": "combined" if len(sections) > 1 else sections[0]["quantity_source"],
             "quantity_note": quantity_note,
             "takeoff_measurement_ids": takeoff_ids,
-            "difficulty_label": difficulty_label,
-            "final_multiplier": final_multiplier,
+            "difficulty_label": "combined" if len(sections) > 1 else sections[0]["difficulty_label"],
+            "final_multiplier": None,
             "labor_confidence_level": labor_confidence_level,
             "labor_reasons": labor_reasons,
             "labor_summary": labor_summary,
-            "stories": stories,
-            "access_label": access_label,
-            "selected_conditions": selected_conditions,
+            "stories": None,
+            "access_label": None,
+            "selected_conditions": [],
+            "sections": section_summaries,
         }
 
     draft = st.session_state.quote_draft
@@ -599,6 +777,43 @@ try:
             st.warning("Labor estimate needs review before quote approval.")
             for reason in draft["labor_reasons"]:
                 st.write(f"- {reason}")
+
+        if draft.get("sections"):
+            for section in draft["sections"]:
+                with st.expander(f"{_trade_display_name(section['trade'])} summary", expanded=True):
+                    section_cols = st.columns(4)
+                    section_cols[0].metric("Measured quantity", f"{float(section['measured_quantity'] or 0):,.2f}")
+                    section_cols[1].metric("Trade", _trade_display_name(section["trade"]))
+                    section_cols[2].metric("Tasks", str(len(section["labor_line_items"])))
+                    section_cols[3].metric("Confidence", section["labor_confidence_level"].replace("_", " ").title())
+                    st.caption(f"Material: {section['material_name']}")
+                    st.caption(f"Difficulty: {section['difficulty_label']}")
+                    st.caption(f"Access: {section['access_label']}")
+                    section_labor_summary = section["labor_summary"]
+                    section_summary_cols = st.columns(3)
+                    section_summary_cols[0].metric("Base labor", f"${section_labor_summary['base_labor_total']:,.2f}")
+                    section_summary_cols[1].metric("Final labor", f"${section_labor_summary['final_labor_total']:,.2f}")
+                    section_summary_cols[2].metric("Unit", section["unit"])
+                    section_labor_df = pd.DataFrame(section["labor_line_items"])
+                    if not section_labor_df.empty:
+                        st.dataframe(
+                            section_labor_df[
+                                [
+                                    "task_name",
+                                    "quantity",
+                                    "unit",
+                                    "base_rate",
+                                    "complexity_multiplier",
+                                    "calculated_cost",
+                                    "manual_override_cost",
+                                    "final_cost",
+                                    "override_reason",
+                                    "notes",
+                                ]
+                            ],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
         labor_breakdown_df = pd.DataFrame(draft["labor_line_items"])
         if labor_breakdown_df.empty:
