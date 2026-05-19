@@ -96,6 +96,20 @@ def _openings_dataframe(openings: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _blank_opening_row() -> dict:
+    return {
+        "opening_type": "window",
+        "quantity": 1.0,
+        "width_ft": None,
+        "height_ft": None,
+        "confidence": 0.0,
+    }
+
+
+def _normalize_editor_records(frame: pd.DataFrame) -> list[dict]:
+    return frame.where(pd.notna(frame), None).replace("", None).to_dict("records")
+
+
 def _measurement_options(trade: str, shape: str) -> list[str]:
     if trade == "roofing":
         options = ROOFING_AREA_MEASUREMENT_TYPES + ROOFING_LINEAR_MEASUREMENT_TYPES + GENERAL_MEASUREMENT_TYPES
@@ -357,6 +371,7 @@ try:
         st.session_state["measurement_image_path"] = saved_path
         st.session_state["measurement_image_name"] = uploaded_image.name
         st.session_state["measurement_extraction"] = None
+        st.session_state.pop("opening_editor_rows", None)
         st.caption(f"Saved image: {saved_path}")
         if uploaded_image.type.startswith("image/"):
             st.image(saved_path, caption=uploaded_image.name, use_container_width=True)
@@ -375,6 +390,7 @@ try:
             else:
                 st.session_state["measurement_extraction"] = extraction
                 st.session_state["measurement_extraction_json"] = _extraction_json_text(extraction)
+                st.session_state.pop("opening_editor_rows", None)
                 st.success("Measurements extracted.")
 
     extraction = st.session_state.get("measurement_extraction")
@@ -405,7 +421,15 @@ try:
                     st.rerun()
 
         measurement_df = _measurements_dataframe(extraction.get("detected_measurements", []))
-        opening_df = _openings_dataframe(extraction.get("openings", []))
+        opening_state_key = "opening_editor_rows"
+        if opening_state_key not in st.session_state:
+            st.session_state[opening_state_key] = _openings_dataframe(extraction.get("openings", []))
+        if st.button("Add opening row"):
+            st.session_state[opening_state_key] = pd.concat(
+                [st.session_state[opening_state_key], pd.DataFrame([_blank_opening_row()])],
+                ignore_index=True,
+            )
+            st.rerun()
 
         st.subheader("Extracted measurements")
         measurement_editor = st.data_editor(
@@ -439,9 +463,9 @@ try:
 
         st.subheader("Openings")
         opening_editor = st.data_editor(
-            opening_df,
+            st.session_state[opening_state_key],
             use_container_width=True,
-            num_rows="dynamic",
+            num_rows="fixed",
             column_config={
                 "opening_type": st.column_config.TextColumn(
                     "Opening type",
@@ -455,8 +479,8 @@ try:
             key="opening_editor",
         )
 
-        measurement_rows = measurement_editor.where(pd.notna(measurement_editor), None).replace("", None).to_dict("records")
-        opening_rows = opening_editor.where(pd.notna(opening_editor), None).replace("", None).to_dict("records")
+        measurement_rows = _normalize_editor_records(measurement_editor)
+        opening_rows = _normalize_editor_records(opening_editor)
         deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
         preview = _compute_preview(trade, measurement_rows, opening_rows, deduct_openings)
 
@@ -519,6 +543,7 @@ try:
             )
             st.success(f"Saved {len(saved)} approved measurement(s).")
             st.caption("Next step: open Quote Builder. Approved measurements for this project are preselected there.")
+            st.session_state.pop(opening_state_key, None)
             st.rerun()
 finally:
     db.close()

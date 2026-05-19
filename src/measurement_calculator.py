@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from math import isfinite
+
 
 def _missing(value) -> bool:
-    return value is None or value == ""
+    if value is None or value == "":
+        return True
+    try:
+        return not isfinite(float(value))
+    except (TypeError, ValueError):
+        return True
 
 
 def rectangle_area(width_ft: float, height_ft: float) -> float:
