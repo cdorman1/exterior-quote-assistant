@@ -7,16 +7,17 @@ import streamlit as st
 from sqlalchemy import func
 
 from src.auth import require_auth
+from src.branding import BRAND_NAME, LOGO_PATH, brand_css, render_brand_header
 from src.database import SessionLocal, init_db
 from src.models import Customer, Project, Quote
 
 
-st.set_page_config(page_title="EK View Construction Quote Assistant", layout="wide")
+st.set_page_config(page_title=BRAND_NAME, page_icon=str(LOGO_PATH) if LOGO_PATH.exists() else "🏗️", layout="wide")
 require_auth()
 init_db()
 
-st.title("EK View Construction Quote Assistant")
-st.caption("Contractor quoting dashboard for roofing and siding jobs.")
+st.markdown(brand_css(), unsafe_allow_html=True)
+render_brand_header()
 
 db = SessionLocal()
 try:
@@ -30,15 +31,16 @@ try:
     quote_rows = db.query(Quote).order_by(Quote.created_at.desc()).limit(8).all()
     status_counts = Counter(q.status for q in db.query(Quote).all())
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Customers", customers, "Active records")
-    col2.metric("Projects", projects, "Jobs in the pipeline")
-    col3.metric("Quotes", quotes, f"{open_quotes} draft quotes")
-    col4.metric("Total quoted value", f"${total_value:,.0f}", f"Avg quote ${avg_quote:,.0f}")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Customers", customers, "Active records")
+    c2.metric("Projects", projects, "Jobs in the pipeline")
+    c3.metric("Quotes", quotes, f"{open_quotes} draft quotes")
+    c4.metric("Total quoted value", f"${total_value:,.0f}", f"Avg quote ${avg_quote:,.0f}")
 
     left, right = st.columns([1.55, 1])
     with left:
-        st.subheader("Recent quotes")
+        st.markdown('<div class="brand-section">', unsafe_allow_html=True)
+        st.markdown('<div class="brand-section-title">Recent quotes</div>', unsafe_allow_html=True)
         recent_data = pd.DataFrame(
             [
                 {
@@ -56,9 +58,11 @@ try:
             st.info("No quotes yet.")
         else:
             st.dataframe(recent_data, use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with right:
-        st.subheader("Quote status mix")
+        st.markdown('<div class="brand-section">', unsafe_allow_html=True)
+        st.markdown('<div class="brand-section-title">Quote status mix</div>', unsafe_allow_html=True)
         if status_counts:
             status_data = pd.DataFrame(
                 [
@@ -70,14 +74,16 @@ try:
         else:
             st.info("No quotes yet.")
 
-        st.subheader("Workflow")
+        st.markdown('<div class="brand-section-title" style="margin-top:1rem;">Workflow</div>', unsafe_allow_html=True)
         st.markdown(
             """
-            1. Add a customer
-            2. Create a project
-            3. Build the quote
-            4. Review the proposal
-            """
+            <div class="brand-step"><div class="brand-step-num">1</div><div class="brand-step-text">Add a customer.</div></div>
+            <div class="brand-step"><div class="brand-step-num">2</div><div class="brand-step-text">Create a project.</div></div>
+            <div class="brand-step"><div class="brand-step-num">3</div><div class="brand-step-text">Build the quote.</div></div>
+            <div class="brand-step"><div class="brand-step-num">4</div><div class="brand-step-text">Review the proposal.</div></div>
+            """,
+            unsafe_allow_html=True,
         )
+        st.markdown("</div>", unsafe_allow_html=True)
 finally:
     db.close()
