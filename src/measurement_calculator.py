@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 
+def _missing(value) -> bool:
+    return value is None or value == ""
+
+
 def rectangle_area(width_ft: float, height_ft: float) -> float:
     return width_ft * height_ft
 
@@ -22,7 +26,7 @@ def calculate_total_opening_area(openings: list[dict]) -> float:
     for opening in openings:
         width_ft = opening.get("width_ft")
         height_ft = opening.get("height_ft")
-        if width_ft is None or height_ft is None:
+        if _missing(width_ft) or _missing(height_ft):
             continue
         quantity = float(opening.get("quantity") or 1)
         total += calculate_opening_area(quantity, float(width_ft), float(height_ft))
@@ -52,7 +56,7 @@ def calculate_area_from_measurement(measurement: dict) -> dict:
     if shape == "rectangle":
         width_ft = measurement.get("width_ft")
         height_ft = measurement.get("height_ft")
-        if width_ft is None or height_ft is None:
+        if _missing(width_ft) or _missing(height_ft):
             warnings.append("Rectangle measurements require width_ft and height_ft.")
             return {"area_sqft": None, "warnings": warnings}
         return {"area_sqft": rectangle_area(float(width_ft), float(height_ft)), "warnings": warnings}
@@ -60,7 +64,7 @@ def calculate_area_from_measurement(measurement: dict) -> dict:
     if shape == "triangle":
         base_ft = measurement.get("base_ft")
         height_ft = measurement.get("height_ft")
-        if base_ft is None or height_ft is None:
+        if _missing(base_ft) or _missing(height_ft):
             warnings.append("Triangle measurements require base_ft and height_ft.")
             return {"area_sqft": None, "warnings": warnings}
         return {"area_sqft": triangle_area(float(base_ft), float(height_ft)), "warnings": warnings}
@@ -69,7 +73,7 @@ def calculate_area_from_measurement(measurement: dict) -> dict:
         top_width_ft = measurement.get("top_width_ft")
         bottom_width_ft = measurement.get("bottom_width_ft")
         height_ft = measurement.get("height_ft")
-        if top_width_ft is None or bottom_width_ft is None or height_ft is None:
+        if _missing(top_width_ft) or _missing(bottom_width_ft) or _missing(height_ft):
             warnings.append("Trapezoid measurements require top_width_ft, bottom_width_ft, and height_ft.")
             return {"area_sqft": None, "warnings": warnings}
         return {

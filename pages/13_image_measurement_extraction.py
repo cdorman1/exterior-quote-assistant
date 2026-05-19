@@ -414,13 +414,13 @@ try:
             num_rows="dynamic",
             column_config={
                 "include": st.column_config.CheckboxColumn("Include"),
-                "measurement_type": st.column_config.SelectboxColumn(
+                "measurement_type": st.column_config.TextColumn(
                     "Measurement type",
-                    options=_measurement_options(trade, "line"),
+                    help="Examples: roof_area, siding_wall_area, gable_area, ridge_length, eave_length",
                 ),
-                "shape": st.column_config.SelectboxColumn(
+                "shape": st.column_config.TextColumn(
                     "Shape",
-                    options=["rectangle", "triangle", "trapezoid", "line", "count", "unknown"],
+                    help="Examples: rectangle, triangle, trapezoid, line, count, unknown",
                 ),
                 "confidence": st.column_config.NumberColumn("Confidence", min_value=0.0, max_value=1.0, step=0.01),
                 "width_ft": st.column_config.NumberColumn("Width ft", min_value=0.0, step=0.1),
@@ -443,9 +443,9 @@ try:
             use_container_width=True,
             num_rows="dynamic",
             column_config={
-                "opening_type": st.column_config.SelectboxColumn(
+                "opening_type": st.column_config.TextColumn(
                     "Opening type",
-                    options=["window", "door", "garage_door", "other"],
+                    help="Examples: window, door, garage_door, other",
                 ),
                 "quantity": st.column_config.NumberColumn("Quantity", min_value=0.0, step=1.0),
                 "width_ft": st.column_config.NumberColumn("Width ft", min_value=0.0, step=0.1),
@@ -455,8 +455,8 @@ try:
             key="opening_editor",
         )
 
-        measurement_rows = measurement_editor.where(pd.notna(measurement_editor), None).to_dict("records")
-        opening_rows = opening_editor.where(pd.notna(opening_editor), None).to_dict("records")
+        measurement_rows = measurement_editor.where(pd.notna(measurement_editor), None).replace("", None).to_dict("records")
+        opening_rows = opening_editor.where(pd.notna(opening_editor), None).replace("", None).to_dict("records")
         deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
         preview = _compute_preview(trade, measurement_rows, opening_rows, deduct_openings)
 
