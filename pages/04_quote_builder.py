@@ -243,8 +243,9 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
 
     material_options = {m.name: m for m in materials}
     st.markdown(f"##### {_trade_display_name(trade)} scope")
+    st.caption("Start with the scope and quantity. Labor settings are tucked below unless you need to adjust them.")
     quantity_source = st.radio(
-        "Quantity source",
+        "How should we get the quantity?",
         ["manual", "approved_takeoff"],
         horizontal=True,
         index=0,
@@ -254,14 +255,14 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
     if quantity_source == "manual":
         quantity_cols = st.columns(2)
         measured_quantity = quantity_cols[0].number_input(
-            "Measured quantity",
+            "Quantity",
             min_value=0.0,
             value=10.0,
             step=1.0,
             key=f"{section_key}_measured_quantity",
         )
         quantity_unit = quantity_cols[1].selectbox(
-            "Select quantity unit",
+            "Unit",
             quantity_unit_options,
             key=f"{section_key}_quantity_unit",
         )
@@ -269,7 +270,7 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
         takeoff_summary = None
     else:
         quantity_unit = st.selectbox(
-            "Select quantity unit",
+            "Unit",
             quantity_unit_options,
             index=0,
             disabled=True,
@@ -331,27 +332,33 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
         step=0.01,
         key=f"{section_key}_waste_factor",
     )
-    labor_method_label = st.selectbox(
-        "Select labor method",
-        list(LABOR_METHOD_LABELS.values()),
-        key=f"{section_key}_labor_method",
-    )
-    labor_method = next(code for code, label in LABOR_METHOD_LABELS.items() if label == labor_method_label)
-    difficulty_label = st.selectbox(
-        "Select difficulty",
-        list(LABOR_DIFFICULTY_MULTIPLIERS.keys()),
-        key=f"{section_key}_difficulty",
-    )
-    base_difficulty_multiplier = LABOR_DIFFICULTY_MULTIPLIERS[difficulty_label]
-    condition_options = LABOR_CONDITION_MULTIPLIERS.get(trade, {})
-    selected_conditions = [
-        condition_name
-        for condition_name in condition_options
-        if st.checkbox(condition_name.replace("_", " ").title(), key=f"{section_key}_condition_{condition_name}")
-    ]
-    condition_multipliers = _selected_condition_multipliers(trade, selected_conditions)
-    final_multiplier = calculate_final_complexity_multiplier(base_difficulty_multiplier, condition_multipliers)
-    st.caption(f"Final complexity multiplier: {final_multiplier:.2f}")
+    labor_method = "unit_based"
+    difficulty_label = "simple"
+    selected_conditions: list[str] = []
+    final_multiplier = 1.0
+    with st.expander("Labor settings", expanded=False):
+        st.caption("Most jobs can stay on the default labor method and complexity. Change these only when the job calls for it.")
+        labor_method_label = st.selectbox(
+            "How should labor be priced?",
+            list(LABOR_METHOD_LABELS.values()),
+            key=f"{section_key}_labor_method",
+        )
+        labor_method = next(code for code, label in LABOR_METHOD_LABELS.items() if label == labor_method_label)
+        difficulty_label = st.selectbox(
+            "How hard is the job?",
+            list(LABOR_DIFFICULTY_MULTIPLIERS.keys()),
+            key=f"{section_key}_difficulty",
+        )
+        base_difficulty_multiplier = LABOR_DIFFICULTY_MULTIPLIERS[difficulty_label]
+        condition_options = LABOR_CONDITION_MULTIPLIERS.get(trade, {})
+        selected_conditions = [
+            condition_name
+            for condition_name in condition_options
+            if st.checkbox(condition_name.replace("_", " ").title(), key=f"{section_key}_condition_{condition_name}")
+        ]
+        condition_multipliers = _selected_condition_multipliers(trade, selected_conditions)
+        final_multiplier = calculate_final_complexity_multiplier(base_difficulty_multiplier, condition_multipliers)
+        st.caption(f"Final complexity multiplier: {final_multiplier:.2f}")
 
     access_label = ", ".join(selected_conditions) if selected_conditions else "Not specified"
     st.markdown("**Project summary**")
