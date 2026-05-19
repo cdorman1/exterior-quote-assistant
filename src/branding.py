@@ -5,7 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 
-BRAND_NAME = "EK View Construction Quote Assistant"
+BRAND_NAME = "Quote Assistant"
 BRAND_TAGLINE = "Contractor quoting dashboard for roofing and siding work."
 LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "ek_view_construction.png"
 
