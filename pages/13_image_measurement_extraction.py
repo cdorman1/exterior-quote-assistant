@@ -487,6 +487,7 @@ try:
                 approved_by=approved_by or None,
             )
             st.success(f"Saved {len(saved)} approved measurement(s).")
+            st.caption("Next step: open Quote Builder. Approved measurements for this project are preselected there.")
             st.rerun()
 finally:
     db.close()

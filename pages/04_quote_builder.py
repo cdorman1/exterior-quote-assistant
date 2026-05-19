@@ -102,6 +102,14 @@ def _takeoff_measurement_label(measurement: TakeoffMeasurement) -> str:
     return " | ".join(source_bits)
 
 
+def _default_takeoff_measurements(trade: str, measurements: list[TakeoffMeasurement]) -> list[TakeoffMeasurement]:
+    if trade == "roofing":
+        relevant_types = {"roof_area"}
+    else:
+        relevant_types = {"siding_wall_area", "gable_area"}
+    return [item for item in measurements if item.measurement_type in relevant_types]
+
+
 def _calculate_takeoff_quantity(trade: str, measurements: list[TakeoffMeasurement]) -> dict:
     total_square_feet = 0.0
     used_measurements: list[dict] = []
@@ -244,11 +252,12 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
     material_options = {m.name: m for m in materials}
     st.markdown(f"##### {_trade_display_name(trade)} scope")
     st.caption("Start with the scope and quantity. Labor settings are tucked below unless you need to adjust them.")
+    default_takeoff_measurements = _default_takeoff_measurements(trade, approved_measurements)
     quantity_source = st.radio(
         "How should we get the quantity?",
         ["manual", "approved_takeoff"],
         horizontal=True,
-        index=0,
+        index=1 if default_takeoff_measurements else 0,
         key=f"{section_key}_quantity_source",
     )
     quantity_unit_options = ["square", "square_foot", "linear_foot", "each", "job", "allowance"]
@@ -281,6 +290,7 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
                 "Approved measurements to use",
                 approved_measurements,
                 format_func=_takeoff_measurement_label,
+                default=default_takeoff_measurements,
                 key=f"{section_key}_takeoff_measurements",
             )
             if selected_takeoff_measurements:
@@ -306,6 +316,7 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
                     f"Approved takeoff quantity: {takeoff_summary['total_square_feet']:,.2f} sq ft "
                     f"({takeoff_summary['total_squares']:,.2f} squares)"
                 )
+                st.caption("Approved takeoff measurements are preselected. Switch to manual if you want to enter the quantity yourself.")
             else:
                 takeoff_summary = {"total_square_feet": 0.0, "total_squares": 0.0, "used_measurements": []}
                 measured_quantity = 0.0
