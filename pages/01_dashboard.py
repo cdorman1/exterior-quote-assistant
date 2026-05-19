@@ -72,12 +72,6 @@ st.markdown(
         color: rgba(49, 51, 63, 0.7);
         margin-top: 0.3rem;
       }
-      .section-shell {
-        border: 1px solid rgba(49, 51, 63, 0.12);
-        border-radius: 12px;
-        padding: 1rem 1rem 0.75rem;
-        background: white;
-      }
       .section-title {
         font-size: 1rem;
         font-weight: 650;
@@ -142,7 +136,6 @@ try:
 
     left, right = st.columns([1.55, 1])
     with left:
-        st.markdown('<div class="section-shell">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Recent quotes</div>', unsafe_allow_html=True)
         recent_data = pd.DataFrame(
             [
@@ -158,10 +151,8 @@ try:
             ]
         )
         st.dataframe(recent_data, use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with right:
-        st.markdown('<div class="section-shell">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">Quote status mix</div>', unsafe_allow_html=True)
         if status_counts:
             status_data = pd.DataFrame(
@@ -184,6 +175,5 @@ try:
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("</div>", unsafe_allow_html=True)
 finally:
     db.close()
