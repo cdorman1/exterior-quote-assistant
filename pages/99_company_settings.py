@@ -50,7 +50,7 @@ def _save_logo(uploaded_logo) -> str:
 
 
 require_auth()
-st.title("Settings")
+st.title("Company Settings")
 init_db()
 db = SessionLocal()
 try:

@@ -165,7 +165,7 @@ exterior_quote_assistant/
     06_labor_rules.py
     07_quotes.py
     08_change_orders.py
-    99_settings.py
+    99_company_settings.py
     10_blueprints.py
     11_takeoff_measurements.py
     12_proposals.py
