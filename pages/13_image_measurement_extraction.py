@@ -100,6 +100,28 @@ def _openings_json_text(openings: list[dict] | None) -> str:
     return json.dumps(openings or [], indent=2, sort_keys=True)
 
 
+def _measurements_json_text(measurements: list[dict] | None) -> str:
+    return json.dumps(measurements or [], indent=2, sort_keys=True)
+
+
+def _blank_measurement_row(trade: str) -> dict:
+    return {
+        "include": True,
+        "label": "Manual measurement",
+        "measurement_type": "roof_area" if trade == "roofing" else "siding_wall_area",
+        "shape": "rectangle",
+        "width_ft": None,
+        "height_ft": None,
+        "base_ft": None,
+        "top_width_ft": None,
+        "bottom_width_ft": None,
+        "length_ft": None,
+        "quantity": None,
+        "confidence": 0.0,
+        "source_text": "",
+    }
+
+
 def _parse_openings_json(raw_text: str) -> list[dict]:
     parsed = json.loads(raw_text or "[]")
     if not isinstance(parsed, list):
@@ -115,6 +137,34 @@ def _parse_openings_json(raw_text: str) -> list[dict]:
                 "width_ft": item.get("width_ft"),
                 "height_ft": item.get("height_ft"),
                 "confidence": item.get("confidence", 0.0),
+            }
+        )
+    return rows
+
+
+def _parse_measurements_json(raw_text: str) -> list[dict]:
+    parsed = json.loads(raw_text or "[]")
+    if not isinstance(parsed, list):
+        raise ValueError("Measurements JSON must be a list of objects.")
+    rows: list[dict] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "include": bool(item.get("include", True)),
+                "label": str(item.get("label") or ""),
+                "measurement_type": str(item.get("measurement_type") or "general_measurement"),
+                "shape": str(item.get("shape") or "unknown"),
+                "width_ft": item.get("width_ft"),
+                "height_ft": item.get("height_ft"),
+                "base_ft": item.get("base_ft"),
+                "top_width_ft": item.get("top_width_ft"),
+                "bottom_width_ft": item.get("bottom_width_ft"),
+                "length_ft": item.get("length_ft"),
+                "quantity": item.get("quantity"),
+                "confidence": item.get("confidence", 0.0),
+                "source_text": str(item.get("source_text") or ""),
             }
         )
     return rows
@@ -404,6 +454,7 @@ try:
             else:
                 st.session_state["measurement_extraction"] = extraction
                 st.session_state["measurement_extraction_json"] = _extraction_json_text(extraction)
+                st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
                 st.session_state["opening_editor_json"] = _openings_json_text(extraction.get("openings", []))
                 st.success("Measurements extracted.")
 
@@ -431,43 +482,45 @@ try:
                 else:
                     st.session_state["measurement_extraction"] = edited_extraction
                     st.session_state["measurement_extraction_json"] = _extraction_json_text(edited_extraction)
+                    st.session_state["measurement_editor_json"] = _measurements_json_text(edited_extraction.get("detected_measurements", []))
                     st.session_state["opening_editor_json"] = _openings_json_text(edited_extraction.get("openings", []))
                     st.success("JSON edits applied.")
                     st.rerun()
 
-        measurement_df = _measurements_dataframe(extraction.get("detected_measurements", []))
-
         st.subheader("Extracted measurements")
-        measurement_editor = st.data_editor(
-            measurement_df,
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "include": st.column_config.CheckboxColumn("Include"),
-                "measurement_type": st.column_config.TextColumn(
-                    "Measurement type",
-                    help="Examples: roof_area, siding_wall_area, gable_area, ridge_length, eave_length",
-                ),
-                "shape": st.column_config.TextColumn(
-                    "Shape",
-                    help="Examples: rectangle, triangle, trapezoid, line, count, unknown",
-                ),
-                "confidence": st.column_config.NumberColumn("Confidence", min_value=0.0, max_value=1.0, step=0.01),
-                "width_ft": st.column_config.NumberColumn("Width ft", min_value=0.0, step=0.1),
-                "height_ft": st.column_config.NumberColumn("Height ft", min_value=0.0, step=0.1),
-                "base_ft": st.column_config.NumberColumn("Base ft", min_value=0.0, step=0.1),
-                "top_width_ft": st.column_config.NumberColumn("Top width ft", min_value=0.0, step=0.1),
-                "bottom_width_ft": st.column_config.NumberColumn("Bottom width ft", min_value=0.0, step=0.1),
-                "length_ft": st.column_config.NumberColumn("Length ft", min_value=0.0, step=0.1),
-                "quantity": st.column_config.NumberColumn("Quantity", min_value=0.0, step=0.1),
-                "calculated_area_sqft": st.column_config.NumberColumn("Calculated area sqft", disabled=True),
-                "warnings": st.column_config.TextColumn("Warnings", disabled=True),
-            },
-            disabled=["calculated_area_sqft", "warnings"],
-            key="measurement_editor",
+        if "measurement_editor_json" not in st.session_state:
+            st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
+        measurements_json = st.text_area(
+            "Measurements JSON",
+            value=st.session_state["measurement_editor_json"],
+            height=280,
+            key="measurement_editor_json_text",
         )
+        measurement_cols = st.columns(3)
+        if measurement_cols[0].button("Apply measurements JSON"):
+            try:
+                measurement_rows = _parse_measurements_json(measurements_json)
+            except ValueError as exc:
+                st.error(f"Invalid measurements JSON: {exc}")
+            else:
+                st.session_state["measurement_editor_json"] = _measurements_json_text(measurement_rows)
+                st.session_state["measurement_extraction"]["detected_measurements"] = measurement_rows
+                st.success("Measurement JSON applied.")
+                st.rerun()
+        if measurement_cols[1].button("Add measurement row"):
+            current_measurements = _parse_measurements_json(st.session_state.get("measurement_editor_json", "[]"))
+            current_measurements.append(_blank_measurement_row(trade))
+            st.session_state["measurement_editor_json"] = _measurements_json_text(current_measurements)
+            if extraction is not None:
+                st.session_state["measurement_extraction"]["detected_measurements"] = current_measurements
+            st.rerun()
+        if measurement_cols[2].button("Reset measurements"):
+            st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
+            if extraction is not None:
+                st.session_state["measurement_extraction"]["detected_measurements"] = extraction.get("detected_measurements", [])
+            st.rerun()
 
-        measurement_rows = _normalize_editor_records(measurement_editor)
+        measurement_rows = _parse_measurements_json(st.session_state["measurement_editor_json"])
         deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
         st.subheader("Openings")
         st.caption("Edit openings here if the AI missed one or if you know the opening count for sure.")
@@ -487,6 +540,7 @@ try:
                 opening_rows = _parse_openings_json(st.session_state.get("opening_editor_json", "[]"))
             else:
                 st.session_state["opening_editor_json"] = _openings_json_text(opening_rows)
+                st.session_state["measurement_extraction"]["openings"] = opening_rows
                 st.success("Openings JSON applied.")
                 st.rerun()
         opening_rows = _parse_openings_json(st.session_state["opening_editor_json"])
