@@ -96,49 +96,32 @@ def _openings_dataframe(openings: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _blank_opening_row() -> dict:
-    return {
-        "row_id": uuid.uuid4().hex,
-        "opening_type": "window",
-        "quantity": 1.0,
-        "width_ft": None,
-        "height_ft": None,
-        "confidence": 0.0,
-    }
+def _openings_json_text(openings: list[dict] | None) -> str:
+    return json.dumps(openings or [], indent=2, sort_keys=True)
+
+
+def _parse_openings_json(raw_text: str) -> list[dict]:
+    parsed = json.loads(raw_text or "[]")
+    if not isinstance(parsed, list):
+        raise ValueError("Openings JSON must be a list of objects.")
+    rows: list[dict] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "opening_type": str(item.get("opening_type") or "window").strip() or "window",
+                "quantity": item.get("quantity"),
+                "width_ft": item.get("width_ft"),
+                "height_ft": item.get("height_ft"),
+                "confidence": item.get("confidence", 0.0),
+            }
+        )
+    return rows
 
 
 def _normalize_editor_records(frame: pd.DataFrame) -> list[dict]:
     return frame.where(pd.notna(frame), None).replace("", None).to_dict("records")
-
-
-def _render_opening_rows(opening_rows: list[dict]) -> list[dict]:
-    rendered_rows: list[dict] = []
-    st.markdown("#### Openings")
-    st.caption("Edit openings here if the AI missed one or if you know the count for sure.")
-    for index, row in enumerate(opening_rows):
-        row_id = str(row.get("row_id") or f"opening_{index}")
-        with st.container(border=True):
-            cols = st.columns([1.2, 0.8, 0.8, 0.8, 0.8, 0.5])
-            opening_type = cols[0].text_input("Opening type", value=str(row.get("opening_type") or "window"), key=f"{row_id}_opening_type")
-            quantity = cols[1].number_input("Quantity", min_value=0.0, value=float(row.get("quantity") or 0.0), step=1.0, key=f"{row_id}_opening_quantity")
-            width_ft = cols[2].number_input("Width ft", min_value=0.0, value=float(row.get("width_ft") or 0.0), step=0.1, key=f"{row_id}_opening_width")
-            height_ft = cols[3].number_input("Height ft", min_value=0.0, value=float(row.get("height_ft") or 0.0), step=0.1, key=f"{row_id}_opening_height")
-            confidence = cols[4].number_input("Confidence", min_value=0.0, max_value=1.0, value=float(row.get("confidence") or 0.0), step=0.01, key=f"{row_id}_opening_confidence")
-            remove_clicked = cols[5].button("Remove", key=f"{row_id}_opening_remove")
-            if remove_clicked:
-                st.session_state["opening_editor_rows"] = [item for item in opening_rows if str(item.get("row_id") or "") != row_id]
-                st.rerun()
-            rendered_rows.append(
-                {
-                    "row_id": row_id,
-                    "opening_type": opening_type.strip() or "window",
-                    "quantity": quantity,
-                    "width_ft": width_ft if width_ft > 0 else None,
-                    "height_ft": height_ft if height_ft > 0 else None,
-                    "confidence": confidence,
-                }
-            )
-    return rendered_rows
 
 
 def _measurement_options(trade: str, shape: str) -> list[str]:
@@ -402,7 +385,7 @@ try:
         st.session_state["measurement_image_path"] = saved_path
         st.session_state["measurement_image_name"] = uploaded_image.name
         st.session_state["measurement_extraction"] = None
-        st.session_state.pop("opening_editor_rows", None)
+        st.session_state.pop("opening_editor_json", None)
         st.caption(f"Saved image: {saved_path}")
         if uploaded_image.type.startswith("image/"):
             st.image(saved_path, caption=uploaded_image.name, use_container_width=True)
@@ -421,7 +404,7 @@ try:
             else:
                 st.session_state["measurement_extraction"] = extraction
                 st.session_state["measurement_extraction_json"] = _extraction_json_text(extraction)
-                st.session_state.pop("opening_editor_rows", None)
+                st.session_state["opening_editor_json"] = _openings_json_text(extraction.get("openings", []))
                 st.success("Measurements extracted.")
 
     extraction = st.session_state.get("measurement_extraction")
@@ -448,19 +431,11 @@ try:
                 else:
                     st.session_state["measurement_extraction"] = edited_extraction
                     st.session_state["measurement_extraction_json"] = _extraction_json_text(edited_extraction)
+                    st.session_state["opening_editor_json"] = _openings_json_text(edited_extraction.get("openings", []))
                     st.success("JSON edits applied.")
                     st.rerun()
 
         measurement_df = _measurements_dataframe(extraction.get("detected_measurements", []))
-        opening_state_key = "opening_editor_rows"
-        if opening_state_key not in st.session_state:
-            st.session_state[opening_state_key] = _openings_dataframe(extraction.get("openings", []))
-        if st.button("Add opening row"):
-            st.session_state[opening_state_key] = pd.concat(
-                [st.session_state[opening_state_key], pd.DataFrame([_blank_opening_row()])],
-                ignore_index=True,
-            )
-            st.rerun()
 
         st.subheader("Extracted measurements")
         measurement_editor = st.data_editor(
@@ -492,13 +467,29 @@ try:
             key="measurement_editor",
         )
 
-        opening_df = st.session_state[opening_state_key].copy()
-        opening_rows = _render_opening_rows(opening_df.to_dict("records"))
-        st.session_state[opening_state_key] = pd.DataFrame(opening_rows)
-
         measurement_rows = _normalize_editor_records(measurement_editor)
-        opening_rows = _normalize_editor_records(st.session_state[opening_state_key])
         deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
+        st.subheader("Openings")
+        st.caption("Edit openings here if the AI missed one or if you know the opening count for sure.")
+        if "opening_editor_json" not in st.session_state:
+            st.session_state["opening_editor_json"] = _openings_json_text(extraction.get("openings", []))
+        openings_json = st.text_area(
+            "Openings JSON",
+            value=st.session_state["opening_editor_json"],
+            height=240,
+            key="opening_editor_json_text",
+        )
+        if st.button("Apply openings JSON"):
+            try:
+                opening_rows = _parse_openings_json(openings_json)
+            except ValueError as exc:
+                st.error(f"Invalid openings JSON: {exc}")
+                opening_rows = _parse_openings_json(st.session_state.get("opening_editor_json", "[]"))
+            else:
+                st.session_state["opening_editor_json"] = _openings_json_text(opening_rows)
+                st.success("Openings JSON applied.")
+                st.rerun()
+        opening_rows = _parse_openings_json(st.session_state["opening_editor_json"])
         preview = _compute_preview(trade, measurement_rows, opening_rows, deduct_openings)
 
         summary_cols = st.columns(4)
@@ -560,7 +551,7 @@ try:
             )
             st.success(f"Saved {len(saved)} approved measurement(s).")
             st.caption("Next step: open Quote Builder. Approved measurements for this project are preselected there.")
-            st.session_state.pop(opening_state_key, None)
+            st.session_state.pop("opening_editor_json", None)
             st.rerun()
 finally:
     db.close()
