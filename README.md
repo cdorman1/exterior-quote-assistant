@@ -113,9 +113,9 @@ The model returns structured measurements.
 
 The app performs area calculations deterministically.
 
-AI output must be reviewed and approved before affecting quotes.
+The image extraction page is a reference aid. It shows the extracted measurements, but final quantities are entered in Quote Builder.
 
-Only approved measurements can be used in Quote Builder.
+Use the extracted values as a guide when completing the quote.
 
 Set these environment variables before using image extraction:
 

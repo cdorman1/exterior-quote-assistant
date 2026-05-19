@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 
@@ -9,22 +8,13 @@ import streamlit as st
 
 from src.auth import require_auth
 from src.blueprint_service import sanitize_filename
-from src.constants import (
-    GENERAL_MEASUREMENT_TYPES,
-    MEASUREMENT_IMAGE_TYPES,
-    ROOFING_AREA_MEASUREMENT_TYPES,
-    ROOFING_LINEAR_MEASUREMENT_TYPES,
-    SIDING_AREA_MEASUREMENT_TYPES,
-    SIDING_LINEAR_MEASUREMENT_TYPES,
-)
+from src.constants import MEASUREMENT_IMAGE_TYPES
 from src.database import SessionLocal, init_db
-from src.measurement_calculator import calculate_area_from_measurement, calculate_net_wall_area, calculate_total_opening_area, roofing_squares, siding_squares
-from src.models import Project, TakeoffMeasurement
+from src.models import Project
 from src.openai_vision_service import extract_measurements_from_image
 
 
 UPLOAD_DIR = Path("data/uploads/measurement_images")
-AREA_SHAPES = {"rectangle", "triangle", "trapezoid"}
 
 
 def _save_uploaded_image(uploaded_file) -> str:
@@ -37,379 +27,82 @@ def _save_uploaded_image(uploaded_file) -> str:
     return str(file_path)
 
 
-def _extraction_json_text(extraction: dict | None) -> str:
-    if not extraction:
-        return ""
-    return json.dumps(extraction, indent=2, sort_keys=True)
-
-
-def _parse_extraction_json(raw_text: str) -> dict:
-    parsed = json.loads(raw_text)
-    if not isinstance(parsed, dict):
-        raise ValueError("Extraction JSON must be a JSON object.")
-    return parsed
-
-
-def _measurements_dataframe(measurements: list[dict]) -> pd.DataFrame:
+def _measurement_table(extraction: dict) -> pd.DataFrame:
     rows = []
-    for measurement in measurements:
-        row = dict(measurement)
-        row.setdefault("include", True)
-        row.setdefault("warnings", "")
-        row.setdefault("calculated_area_sqft", None)
-        rows.append(row)
+    for item in extraction.get("detected_measurements", []):
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "Label": item.get("label") or "",
+                "Measurement Type": item.get("measurement_type") or "",
+                "Shape": item.get("shape") or "",
+                "Width (ft)": item.get("width_ft"),
+                "Height (ft)": item.get("height_ft"),
+                "Base (ft)": item.get("base_ft"),
+                "Top Width (ft)": item.get("top_width_ft"),
+                "Bottom Width (ft)": item.get("bottom_width_ft"),
+                "Length (ft)": item.get("length_ft"),
+                "Quantity": item.get("quantity"),
+                "Confidence": item.get("confidence"),
+                "Source Text": item.get("source_text") or "",
+            }
+        )
     if not rows:
         rows = [
             {
-                "include": False,
-                "label": "",
-                "measurement_type": "general_measurement",
-                "shape": "unknown",
-                "width_ft": None,
-                "height_ft": None,
-                "base_ft": None,
-                "top_width_ft": None,
-                "bottom_width_ft": None,
-                "length_ft": None,
-                "quantity": None,
-                "confidence": 0.0,
-                "source_text": "",
-                "calculated_area_sqft": None,
-                "warnings": "",
+                "Label": "",
+                "Measurement Type": "",
+                "Shape": "",
+                "Width (ft)": None,
+                "Height (ft)": None,
+                "Base (ft)": None,
+                "Top Width (ft)": None,
+                "Bottom Width (ft)": None,
+                "Length (ft)": None,
+                "Quantity": None,
+                "Confidence": None,
+                "Source Text": "",
             }
         ]
     return pd.DataFrame(rows)
 
 
-def _openings_dataframe(openings: list[dict]) -> pd.DataFrame:
-    rows = [dict(opening) for opening in openings]
+def _opening_table(extraction: dict) -> pd.DataFrame:
+    rows = []
+    for item in extraction.get("openings", []):
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "Opening Type": item.get("opening_type") or "",
+                "Quantity": item.get("quantity"),
+                "Width (ft)": item.get("width_ft"),
+                "Height (ft)": item.get("height_ft"),
+                "Confidence": item.get("confidence"),
+            }
+        )
     if not rows:
         rows = [
             {
-                "opening_type": "window",
-                "quantity": 1.0,
-                "width_ft": None,
-                "height_ft": None,
-                "confidence": 0.0,
+                "Opening Type": "",
+                "Quantity": None,
+                "Width (ft)": None,
+                "Height (ft)": None,
+                "Confidence": None,
             }
         ]
     return pd.DataFrame(rows)
 
 
-def _openings_json_text(openings: list[dict] | None) -> str:
-    return json.dumps(openings or [], indent=2, sort_keys=True)
-
-
-def _measurements_json_text(measurements: list[dict] | None) -> str:
-    return json.dumps(measurements or [], indent=2, sort_keys=True)
-
-
-def _blank_measurement_row(trade: str) -> dict:
-    return {
-        "include": True,
-        "label": "Manual measurement",
-        "measurement_type": "roof_area" if trade == "roofing" else "siding_wall_area",
-        "shape": "rectangle",
-        "width_ft": None,
-        "height_ft": None,
-        "base_ft": None,
-        "top_width_ft": None,
-        "bottom_width_ft": None,
-        "length_ft": None,
-        "quantity": None,
-        "confidence": 0.0,
-        "source_text": "",
+def _store_latest_extraction(project_id: int, trade: str, image_name: str, image_path: str, extraction: dict) -> None:
+    st.session_state["latest_image_measurement_extraction"] = {
+        "project_id": project_id,
+        "trade": trade,
+        "image_name": image_name,
+        "image_path": image_path,
+        "extraction": extraction,
     }
-
-
-def _parse_openings_json(raw_text: str) -> list[dict]:
-    parsed = json.loads(raw_text or "[]")
-    if not isinstance(parsed, list):
-        raise ValueError("Openings JSON must be a list of objects.")
-    rows: list[dict] = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        rows.append(
-            {
-                "opening_type": str(item.get("opening_type") or "window").strip() or "window",
-                "quantity": item.get("quantity"),
-                "width_ft": item.get("width_ft"),
-                "height_ft": item.get("height_ft"),
-                "confidence": item.get("confidence", 0.0),
-            }
-        )
-    return rows
-
-
-def _parse_measurements_json(raw_text: str) -> list[dict]:
-    parsed = json.loads(raw_text or "[]")
-    if not isinstance(parsed, list):
-        raise ValueError("Measurements JSON must be a list of objects.")
-    rows: list[dict] = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        rows.append(
-            {
-                "include": bool(item.get("include", True)),
-                "label": str(item.get("label") or ""),
-                "measurement_type": str(item.get("measurement_type") or "general_measurement"),
-                "shape": str(item.get("shape") or "unknown"),
-                "width_ft": item.get("width_ft"),
-                "height_ft": item.get("height_ft"),
-                "base_ft": item.get("base_ft"),
-                "top_width_ft": item.get("top_width_ft"),
-                "bottom_width_ft": item.get("bottom_width_ft"),
-                "length_ft": item.get("length_ft"),
-                "quantity": item.get("quantity"),
-                "confidence": item.get("confidence", 0.0),
-                "source_text": str(item.get("source_text") or ""),
-            }
-        )
-    return rows
-
-
-def _normalize_editor_records(frame: pd.DataFrame) -> list[dict]:
-    return frame.where(pd.notna(frame), None).replace("", None).to_dict("records")
-
-
-def _measurement_options(trade: str, shape: str) -> list[str]:
-    if trade == "roofing":
-        options = ROOFING_AREA_MEASUREMENT_TYPES + ROOFING_LINEAR_MEASUREMENT_TYPES + GENERAL_MEASUREMENT_TYPES
-        if shape == "count":
-            options = ["roof_penetration_count"] + [item for item in options if item != "roof_penetration_count"]
-        return options
-    options = SIDING_AREA_MEASUREMENT_TYPES + SIDING_LINEAR_MEASUREMENT_TYPES + GENERAL_MEASUREMENT_TYPES
-    return options
-
-
-def _compute_preview(trade: str, measurements: list[dict], openings: list[dict], deduct_openings: bool) -> dict:
-    preview_rows: list[dict] = []
-    wall_area = 0.0
-    gable_area = 0.0
-    roof_area = 0.0
-    linear_measurements: list[dict] = []
-    warnings: list[str] = []
-
-    for measurement in measurements:
-        if not measurement.get("include"):
-            continue
-        area_result = calculate_area_from_measurement(measurement)
-        area_sqft = area_result["area_sqft"]
-        row_warnings = list(area_result["warnings"])
-        measurement_type = str(measurement.get("measurement_type") or "").strip()
-        shape = str(measurement.get("shape") or "unknown").strip().lower()
-        if measurement_type in SIDING_AREA_MEASUREMENT_TYPES + ROOFING_AREA_MEASUREMENT_TYPES and area_sqft is None:
-            row_warnings.append("Selected area measurement is missing dimensions.")
-        if measurement_type in SIDING_LINEAR_MEASUREMENT_TYPES + ROOFING_LINEAR_MEASUREMENT_TYPES or measurement_type == "roof_penetration_count":
-            if _row_quantity(measurement) is None:
-                row_warnings.append("Selected linear measurement is missing a quantity or length.")
-        preview_row = dict(measurement)
-        preview_row["calculated_area_sqft"] = area_sqft
-        preview_row["warnings"] = "; ".join(row_warnings)
-        preview_rows.append(preview_row)
-        warnings.extend(row_warnings)
-
-        if trade == "siding":
-            if measurement_type == "gable_area" and area_sqft is not None:
-                gable_area += area_sqft
-            elif measurement_type == "siding_wall_area" or shape in AREA_SHAPES:
-                if area_sqft is not None:
-                    wall_area += area_sqft
-            elif measurement_type in SIDING_LINEAR_MEASUREMENT_TYPES:
-                linear_measurements.append(preview_row)
-        else:
-            if measurement_type == "roof_area" or shape in AREA_SHAPES:
-                if area_sqft is not None:
-                    roof_area += area_sqft
-            elif measurement_type in ROOFING_LINEAR_MEASUREMENT_TYPES or measurement_type == "roof_penetration_count":
-                linear_measurements.append(preview_row)
-
-    opening_area = calculate_total_opening_area(openings) if deduct_openings else 0.0
-    net_wall_area = calculate_net_wall_area(wall_area, opening_area) if trade == "siding" else 0.0
-    combined_area = roof_area if trade == "roofing" else net_wall_area + gable_area
-    combined_area = round(combined_area, 2)
-    combined_squares = round(roofing_squares(combined_area) if trade == "roofing" else siding_squares(combined_area), 2)
-
-    return {
-        "rows": preview_rows,
-        "warnings": sorted(set(warnings)),
-        "wall_area": round(wall_area, 2),
-        "gable_area": round(gable_area, 2),
-        "roof_area": round(roof_area, 2),
-        "opening_area": round(opening_area, 2),
-        "net_wall_area": round(net_wall_area, 2),
-        "combined_area": combined_area,
-        "combined_squares": combined_squares,
-        "linear_measurements": linear_measurements,
-    }
-
-
-def _row_quantity(row: dict) -> float | None:
-    for key in ("length_ft", "quantity"):
-        value = row.get(key)
-        if value not in (None, ""):
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                continue
-    return None
-
-
-def _save_preview_measurements(
-    db,
-    project_id: int,
-    image_name: str,
-    trade: str,
-    preview: dict,
-    measurement_rows: list[dict],
-    openings: list[dict],
-    deduct_openings: bool,
-    approved_by: str | None,
-) -> list[TakeoffMeasurement]:
-    saved: list[TakeoffMeasurement] = []
-    opening_area = preview["opening_area"] if deduct_openings else 0.0
-    confidence = 0.0
-    if measurement_rows:
-        confidence = max(float(row.get("confidence") or 0) for row in measurement_rows if row.get("include")) if any(row.get("include") for row in measurement_rows) else 0.0
-
-    if trade == "siding":
-        wall_rows = [
-            row
-            for row in preview["rows"]
-            if row.get("include")
-            and str(row.get("measurement_type")) == "siding_wall_area"
-            and row.get("calculated_area_sqft") is not None
-        ]
-        gable_rows = [
-            row
-            for row in preview["rows"]
-            if row.get("include")
-            and str(row.get("measurement_type")) == "gable_area"
-            and row.get("calculated_area_sqft") is not None
-        ]
-        if wall_rows:
-            wall_area_total = round(sum(float(row["calculated_area_sqft"]) for row in wall_rows), 2)
-            note = (
-                f"Image: {image_name} | Gross wall area: {wall_area_total:.2f} sq ft | "
-                f"Opening deduction: {opening_area:.2f} sq ft | AI confidence: {confidence:.2f}"
-            )
-            saved.append(
-                TakeoffMeasurement(
-                    project_id=project_id,
-                    blueprint_file_id=None,
-                    blueprint_sheet_id=None,
-                    trade="siding",
-                    measurement_type="siding_wall_area",
-                    quantity=calculate_net_wall_area(wall_area_total, opening_area) if deduct_openings else wall_area_total,
-                    unit="square_foot",
-                    source="openai_vision_extracted",
-                    confidence_score=confidence,
-                    approved=True,
-                    approved_by=approved_by or None,
-                    notes=note,
-                )
-            )
-        if gable_rows:
-            gable_area_total = round(sum(float(row["calculated_area_sqft"]) for row in gable_rows), 2)
-            note = f"Image: {image_name} | Gable area: {gable_area_total:.2f} sq ft | AI confidence: {confidence:.2f}"
-            saved.append(
-                TakeoffMeasurement(
-                    project_id=project_id,
-                    blueprint_file_id=None,
-                    blueprint_sheet_id=None,
-                    trade="siding",
-                    measurement_type="gable_area",
-                    quantity=gable_area_total,
-                    unit="square_foot",
-                    source="openai_vision_extracted",
-                    confidence_score=confidence,
-                    approved=True,
-                    approved_by=approved_by or None,
-                    notes=note,
-                )
-            )
-        for row in preview["linear_measurements"]:
-            quantity = _row_quantity(row)
-            if quantity is None:
-                continue
-            measurement_type = str(row.get("measurement_type") or "").strip()
-            if measurement_type not in SIDING_LINEAR_MEASUREMENT_TYPES:
-                continue
-            unit = "each" if measurement_type.endswith("_count") else "linear_foot"
-            saved.append(
-                TakeoffMeasurement(
-                    project_id=project_id,
-                    blueprint_file_id=None,
-                    blueprint_sheet_id=None,
-                    trade="siding",
-                    measurement_type=measurement_type,
-                    quantity=quantity,
-                    unit=unit,
-                    source="openai_vision_extracted",
-                    confidence_score=float(row.get("confidence") or confidence),
-                    approved=True,
-                    approved_by=approved_by or None,
-                    notes=f"Image: {image_name} | AI confidence: {float(row.get('confidence') or confidence):.2f}",
-                )
-            )
-    else:
-        roof_rows = [
-            row
-            for row in preview["rows"]
-            if row.get("include")
-            and str(row.get("measurement_type")) == "roof_area"
-            and row.get("calculated_area_sqft") is not None
-        ]
-        if roof_rows:
-            roof_area_total = round(sum(float(row["calculated_area_sqft"]) for row in roof_rows), 2)
-            note = f"Image: {image_name} | Roof area: {roof_area_total:.2f} sq ft | AI confidence: {confidence:.2f}"
-            saved.append(
-                TakeoffMeasurement(
-                    project_id=project_id,
-                    blueprint_file_id=None,
-                    blueprint_sheet_id=None,
-                    trade="roofing",
-                    measurement_type="roof_area",
-                    quantity=roof_area_total,
-                    unit="square_foot",
-                    source="openai_vision_extracted",
-                    confidence_score=confidence,
-                    approved=True,
-                    approved_by=approved_by or None,
-                    notes=note,
-                )
-            )
-        for row in preview["linear_measurements"]:
-            quantity = _row_quantity(row)
-            if quantity is None:
-                continue
-            measurement_type = str(row.get("measurement_type") or "").strip()
-            if measurement_type not in ROOFING_LINEAR_MEASUREMENT_TYPES and measurement_type != "roof_penetration_count":
-                continue
-            unit = "each" if measurement_type.endswith("_count") else "linear_foot"
-            saved.append(
-                TakeoffMeasurement(
-                    project_id=project_id,
-                    blueprint_file_id=None,
-                    blueprint_sheet_id=None,
-                    trade="roofing",
-                    measurement_type=measurement_type,
-                    quantity=quantity,
-                    unit=unit,
-                    source="openai_vision_extracted",
-                    confidence_score=float(row.get("confidence") or confidence),
-                    approved=True,
-                    approved_by=approved_by or None,
-                    notes=f"Image: {image_name} | AI confidence: {float(row.get('confidence') or confidence):.2f}",
-                )
-            )
-
-    for item in saved:
-        db.add(item)
-    db.commit()
-    return saved
 
 
 require_auth()
@@ -425,20 +118,24 @@ try:
     project_options = {f"{project.project_name} - {project.customer.name} ({project.id})": project for project in projects}
     selected_project = project_options[st.selectbox("Project", list(project_options))]
     trade = st.selectbox("Trade", ["roofing", "siding"])
+
     st.warning(
-        "AI extracted measurements must be reviewed before use. Do not approve measurements unless the image is clear and the dimensions are verified."
+        "AI extracted measurements are reference only. Review them and enter the final quantities in Quote Builder."
     )
 
     uploaded_image = st.file_uploader("Upload image", type=MEASUREMENT_IMAGE_TYPES)
     if uploaded_image is not None:
-        saved_path = _save_uploaded_image(uploaded_image)
-        st.session_state["measurement_image_path"] = saved_path
-        st.session_state["measurement_image_name"] = uploaded_image.name
-        st.session_state["measurement_extraction"] = None
-        st.session_state.pop("opening_editor_json", None)
-        st.caption(f"Saved image: {saved_path}")
-        if uploaded_image.type.startswith("image/"):
-            st.image(saved_path, caption=uploaded_image.name, use_container_width=True)
+        current_signature = (uploaded_image.name, uploaded_image.size)
+        if st.session_state.get("measurement_image_signature") != current_signature:
+            saved_path = _save_uploaded_image(uploaded_image)
+            st.session_state["measurement_image_signature"] = current_signature
+            st.session_state["measurement_image_path"] = saved_path
+            st.session_state["measurement_image_name"] = uploaded_image.name
+            st.session_state["measurement_image_project_id"] = selected_project.id
+            st.session_state["measurement_image_trade"] = trade
+            st.session_state.pop("latest_image_measurement_extraction", None)
+        st.caption(f"Saved image: {st.session_state.get('measurement_image_path')}")
+        st.image(st.session_state.get("measurement_image_path"), caption=uploaded_image.name, use_container_width=True)
 
     image_path = st.session_state.get("measurement_image_path")
     image_name = st.session_state.get("measurement_image_name") or "uploaded image"
@@ -452,160 +149,47 @@ try:
             except RuntimeError as exc:
                 st.error(str(exc))
             else:
-                st.session_state["measurement_extraction"] = extraction
-                st.session_state["measurement_extraction_json"] = _extraction_json_text(extraction)
-                st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
-                st.session_state["opening_editor_json"] = _openings_json_text(extraction.get("openings", []))
-                st.success("Measurements extracted.")
+                _store_latest_extraction(selected_project.id, trade, image_name, image_path, extraction)
+                st.success("Measurements extracted. Use Quote Builder to enter the final quantities.")
 
-    extraction = st.session_state.get("measurement_extraction")
-    if extraction:
-        st.caption(f"Extraction confidence: {float(extraction.get('confidence') or 0):.2f}")
+    draft = st.session_state.get("latest_image_measurement_extraction")
+    if draft and draft.get("project_id") == selected_project.id and draft.get("trade") == trade:
+        extraction = draft["extraction"]
+        measurements = extraction.get("detected_measurements", [])
+        openings = extraction.get("openings", [])
+
+        st.caption(f"Image: {draft.get('image_name')}")
+        metrics = st.columns(4)
+        metrics[0].metric("Confidence", f"{float(extraction.get('confidence') or 0):.2f}")
+        metrics[1].metric("Measurements", str(len(measurements)))
+        metrics[2].metric("Openings", str(len(openings)))
+        metrics[3].metric("Warnings", str(len(extraction.get("warnings") or [])))
+
         if extraction.get("warnings"):
             st.warning("\n".join(f"- {warning}" for warning in extraction.get("warnings", [])))
         if extraction.get("calculation_recommendations"):
             st.info("\n".join(f"- {item}" for item in extraction.get("calculation_recommendations", [])))
 
-        with st.expander("Raw extraction JSON", expanded=False):
-            st.code(_extraction_json_text(extraction), language="json")
-            edited_json = st.text_area(
-                "Edit raw JSON before saving",
-                value=st.session_state.get("measurement_extraction_json", _extraction_json_text(extraction)),
-                height=320,
-                key="measurement_extraction_json_editor",
-            )
-            if st.button("Apply JSON edits"):
-                try:
-                    edited_extraction = _parse_extraction_json(edited_json)
-                except ValueError as exc:
-                    st.error(f"Invalid JSON: {exc}")
-                else:
-                    st.session_state["measurement_extraction"] = edited_extraction
-                    st.session_state["measurement_extraction_json"] = _extraction_json_text(edited_extraction)
-                    st.session_state["measurement_editor_json"] = _measurements_json_text(edited_extraction.get("detected_measurements", []))
-                    st.session_state["opening_editor_json"] = _openings_json_text(edited_extraction.get("openings", []))
-                    st.success("JSON edits applied.")
-                    st.rerun()
-
         st.subheader("Extracted measurements")
-        if "measurement_editor_json" not in st.session_state:
-            st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
-        measurements_json = st.text_area(
-            "Measurements JSON",
-            value=st.session_state["measurement_editor_json"],
-            height=280,
-            key="measurement_editor_json_text",
-        )
-        measurement_cols = st.columns(3)
-        if measurement_cols[0].button("Apply measurements JSON"):
-            try:
-                measurement_rows = _parse_measurements_json(measurements_json)
-            except ValueError as exc:
-                st.error(f"Invalid measurements JSON: {exc}")
-            else:
-                st.session_state["measurement_editor_json"] = _measurements_json_text(measurement_rows)
-                st.session_state["measurement_extraction"]["detected_measurements"] = measurement_rows
-                st.success("Measurement JSON applied.")
-                st.rerun()
-        if measurement_cols[1].button("Add measurement row"):
-            current_measurements = _parse_measurements_json(st.session_state.get("measurement_editor_json", "[]"))
-            current_measurements.append(_blank_measurement_row(trade))
-            st.session_state["measurement_editor_json"] = _measurements_json_text(current_measurements)
-            if extraction is not None:
-                st.session_state["measurement_extraction"]["detected_measurements"] = current_measurements
+        st.dataframe(_measurement_table(extraction), use_container_width=True, hide_index=True)
+
+        st.subheader("Detected openings")
+        st.dataframe(_opening_table(extraction), use_container_width=True, hide_index=True)
+
+        with st.expander("Technical details", expanded=False):
+            st.json(extraction)
+
+        st.info("Use these measurements as reference when you complete the quote. Enter the final quantities in Quote Builder.")
+
+        if st.button("Clear extraction"):
+            st.session_state.pop("latest_image_measurement_extraction", None)
+            st.session_state.pop("measurement_image_signature", None)
+            st.session_state.pop("measurement_image_path", None)
+            st.session_state.pop("measurement_image_name", None)
+            st.session_state.pop("measurement_image_project_id", None)
+            st.session_state.pop("measurement_image_trade", None)
             st.rerun()
-        if measurement_cols[2].button("Reset measurements"):
-            st.session_state["measurement_editor_json"] = _measurements_json_text(extraction.get("detected_measurements", []))
-            if extraction is not None:
-                st.session_state["measurement_extraction"]["detected_measurements"] = extraction.get("detected_measurements", [])
-            st.rerun()
-
-        measurement_rows = _parse_measurements_json(st.session_state["measurement_editor_json"])
-        deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
-        st.subheader("Openings")
-        st.caption("Edit openings here if the AI missed one or if you know the opening count for sure.")
-        if "opening_editor_json" not in st.session_state:
-            st.session_state["opening_editor_json"] = _openings_json_text(extraction.get("openings", []))
-        openings_json = st.text_area(
-            "Openings JSON",
-            value=st.session_state["opening_editor_json"],
-            height=240,
-            key="opening_editor_json_text",
-        )
-        if st.button("Apply openings JSON"):
-            try:
-                opening_rows = _parse_openings_json(openings_json)
-            except ValueError as exc:
-                st.error(f"Invalid openings JSON: {exc}")
-                opening_rows = _parse_openings_json(st.session_state.get("opening_editor_json", "[]"))
-            else:
-                st.session_state["opening_editor_json"] = _openings_json_text(opening_rows)
-                st.session_state["measurement_extraction"]["openings"] = opening_rows
-                st.success("Openings JSON applied.")
-                st.rerun()
-        opening_rows = _parse_openings_json(st.session_state["opening_editor_json"])
-        preview = _compute_preview(trade, measurement_rows, opening_rows, deduct_openings)
-
-        summary_cols = st.columns(4)
-        if trade == "siding":
-            summary_cols[0].metric("Wall area", f"{preview['wall_area']:,.2f} sq ft")
-            summary_cols[1].metric("Openings", f"{preview['opening_area']:,.2f} sq ft")
-            summary_cols[2].metric("Net wall area", f"{preview['net_wall_area']:,.2f} sq ft")
-            summary_cols[3].metric("Siding squares", f"{preview['combined_squares']:,.2f}")
-        else:
-            summary_cols[0].metric("Roof area", f"{preview['roof_area']:,.2f} sq ft")
-            summary_cols[1].metric("Roofing squares", f"{preview['combined_squares']:,.2f}")
-            summary_cols[2].metric("Linear measurements", str(len(preview["linear_measurements"])))
-            summary_cols[3].metric("Image warnings", str(len(preview["warnings"])))
-
-        if preview["warnings"]:
-            st.warning("\n".join(f"- {item}" for item in preview["warnings"]))
-
-        st.subheader("Preview")
-        preview_df = pd.DataFrame(preview["rows"])
-        if preview_df.empty:
-            st.info("Select one or more measurements to preview calculated area.")
-        else:
-            st.dataframe(
-                preview_df[
-                    [
-                        "include",
-                        "label",
-                        "measurement_type",
-                        "shape",
-                        "width_ft",
-                        "height_ft",
-                        "base_ft",
-                        "top_width_ft",
-                        "bottom_width_ft",
-                        "length_ft",
-                        "quantity",
-                        "confidence",
-                        "source_text",
-                        "calculated_area_sqft",
-                        "warnings",
-                    ]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        approved_by = st.text_input("Approved by")
-        if st.button("Save approved measurements"):
-            saved = _save_preview_measurements(
-                db=db,
-                project_id=selected_project.id,
-                image_name=image_name,
-                trade=trade,
-                preview=preview,
-                measurement_rows=measurement_rows,
-                openings=opening_rows,
-                deduct_openings=deduct_openings,
-                approved_by=approved_by or None,
-            )
-            st.success(f"Saved {len(saved)} approved measurement(s).")
-            st.caption("Next step: open Quote Builder. Approved measurements for this project are preselected there.")
-            st.session_state.pop("opening_editor_json", None)
-            st.rerun()
+    elif draft:
+        st.info("There is a saved extraction for another project or trade. Switch to that project and trade to review it.")
 finally:
     db.close()

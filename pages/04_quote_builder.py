@@ -227,6 +227,34 @@ def _trade_display_name(trade: str) -> str:
     return trade.replace("_", " ").title()
 
 
+def _image_extraction_reference(project_id: int, trade: str) -> dict | None:
+    draft = st.session_state.get("latest_image_measurement_extraction")
+    if not draft:
+        return None
+    if draft.get("project_id") != project_id or draft.get("trade") != trade:
+        return None
+    return draft
+
+
+def _image_measurement_table(extraction: dict) -> pd.DataFrame:
+    rows = []
+    for item in extraction.get("detected_measurements", []):
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "Label": item.get("label") or "",
+                "Measurement Type": item.get("measurement_type") or "",
+                "Shape": item.get("shape") or "",
+                "Quantity": item.get("quantity"),
+                "Confidence": item.get("confidence"),
+            }
+        )
+    if not rows:
+        rows = [{"Label": "", "Measurement Type": "", "Shape": "", "Quantity": None, "Confidence": None}]
+    return pd.DataFrame(rows)
+
+
 def _render_trade_section(db, selected_project: Project, trade: str, section_key: str) -> dict:
     approved_measurements = (
         db.query(TakeoffMeasurement)
@@ -252,6 +280,17 @@ def _render_trade_section(db, selected_project: Project, trade: str, section_key
     material_options = {m.name: m for m in materials}
     st.markdown(f"##### {_trade_display_name(trade)} scope")
     st.caption("Start with the scope and quantity. Labor settings are tucked below unless you need to adjust them.")
+    extraction_reference = _image_extraction_reference(selected_project.id, trade)
+    if extraction_reference:
+        with st.expander("Latest image measurements", expanded=False):
+            st.caption(
+                f"Reference only. Enter these numbers manually in the quote. Image: {extraction_reference.get('image_name')}"
+            )
+            st.dataframe(
+                _image_measurement_table(extraction_reference["extraction"]),
+                use_container_width=True,
+                hide_index=True,
+            )
     default_takeoff_measurements = _default_takeoff_measurements(trade, approved_measurements)
     quantity_source = st.radio(
         "How should we get the quantity?",
