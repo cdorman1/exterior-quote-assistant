@@ -20,7 +20,7 @@ def _kpi_card(label: str, value: str, detail: str = "") -> str:
     </div>
     """
 
-st.set_page_config(page_title="Dashboard", layout="wide")
+st.set_page_config(page_title="EK View Construction Quote Assistant", layout="wide")
 require_auth()
 init_db()
 
@@ -121,7 +121,7 @@ try:
     st.markdown(
         """
         <div class="dashboard-hero">
-          <h1>Exterior Quote Assistant</h1>
+          <h1>EK View Construction Quote Assistant</h1>
           <p>Contractor quoting dashboard for roofing and siding jobs.</p>
         </div>
         """,

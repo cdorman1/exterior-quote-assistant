@@ -3,7 +3,7 @@ import streamlit as st
 from src.auth import require_auth
 from src.database import init_db
 
-st.set_page_config(page_title="Exterior Quote Assistant", layout="wide")
+st.set_page_config(page_title="EK View Construction Quote Assistant", layout="wide")
 require_auth()
 init_db()
 
@@ -99,7 +99,7 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
-      <h1>Exterior Quote Assistant</h1>
+      <h1>EK View Construction Quote Assistant</h1>
       <p>Contractor quoting dashboard for roofing and siding work.</p>
     </div>
     """,
