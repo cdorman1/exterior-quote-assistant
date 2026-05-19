@@ -105,6 +105,25 @@ The estimator must manually enter takeoff measurements and mark them approved.
 
 Only approved takeoff measurements can be used in quote calculations.
 
+## OpenAI Vision Measurement Extraction
+
+The app can use OpenAI vision to extract visible typed or handwritten measurements from uploaded images.
+
+The model returns structured measurements.
+
+The app performs area calculations deterministically.
+
+AI output must be reviewed and approved before affecting quotes.
+
+Only approved measurements can be used in Quote Builder.
+
+Set these environment variables before using image extraction:
+
+```bash
+OPENAI_API_KEY=
+OPENAI_VISION_MODEL=gpt-5.5
+```
+
 ## Development Note
 
 During early development, if database models change, delete `data/exterior_quote_assistant.db` and rerun:
@@ -133,6 +152,8 @@ exterior_quote_assistant/
     proposal_generator.py
     proposal_service.py
     pdf_service.py
+    measurement_calculator.py
+    openai_vision_service.py
     csv_importer.py
     constants.py
   pages/
@@ -148,11 +169,14 @@ exterior_quote_assistant/
     10_blueprints.py
     11_takeoff_measurements.py
     12_proposals.py
+    13_image_measurement_extraction.py
   tests/
     test_pricing_engine.py
     test_blueprint_service.py
     test_proposal_service.py
     test_pdf_service.py
+    test_measurement_calculator.py
+    test_openai_vision_service.py
 ```
 
 ## MVP Scope

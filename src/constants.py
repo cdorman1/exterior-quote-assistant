@@ -35,6 +35,30 @@ LABOR_CONDITION_MULTIPLIERS = {
 }
 QUOTE_STATUSES = ["draft", "sent", "accepted", "rejected"]
 PROJECT_STATUSES = ["lead", "estimating", "quoted", "won", "lost", "completed"]
+TAKEOFF_SOURCES = ["manual", "pdf_assisted", "field_measurement", "openai_vision_extracted", "ai_suggested_future", "cad_extracted_future"]
+OPENAI_VISION_MODEL_DEFAULT = "gpt-5.5"
+MEASUREMENT_IMAGE_TYPES = ["png", "jpg", "jpeg", "webp"]
+ROOFING_AREA_MEASUREMENT_TYPES = ["roof_area"]
+ROOFING_LINEAR_MEASUREMENT_TYPES = [
+    "ridge_length",
+    "valley_length",
+    "hip_length",
+    "rake_length",
+    "eave_length",
+    "drip_edge_length",
+    "flashing_length",
+    "roof_penetration_count",
+]
+SIDING_AREA_MEASUREMENT_TYPES = ["siding_wall_area", "gable_area"]
+SIDING_LINEAR_MEASUREMENT_TYPES = [
+    "soffit_length",
+    "fascia_length",
+    "j_channel_length",
+    "outside_corner_count",
+    "inside_corner_count",
+    "trim_length",
+]
+GENERAL_MEASUREMENT_TYPES = ["general_measurement"]
 
 DEFAULT_ASSUMPTIONS = [
     "Pricing is based on the measurements and scope available at the time of quote.",

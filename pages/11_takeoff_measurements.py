@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from src.auth import require_auth
+from src.constants import TAKEOFF_SOURCES
 from src.database import SessionLocal, init_db
 from src.models import BlueprintFile, BlueprintSheet, Project, TakeoffMeasurement
 
@@ -47,7 +48,7 @@ try:
         measurement_type = st.text_input("Measurement type")
         quantity = st.number_input("Quantity", min_value=0.0, value=0.0, step=1.0)
         unit = st.selectbox("Unit", ["square", "square_foot", "linear_foot", "each", "job", "allowance"])
-        source = st.selectbox("Source", ["manual", "pdf_assisted", "field_measurement", "ai_suggested_future", "cad_extracted_future"])
+        source = st.selectbox("Source", TAKEOFF_SOURCES)
         confidence_score = st.number_input("Confidence score", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
         approved = st.checkbox("Approved", value=False)
         approved_by = st.text_input("Approved by")
