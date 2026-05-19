@@ -9,6 +9,7 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from src.models import CompanySettings, Proposal
@@ -33,6 +34,22 @@ def _safe_path(path: str | None) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def _logo_flowable(logo_path: Path | None, styles) -> Paragraph | Image:
+    if not logo_path:
+        return Paragraph("&nbsp;", styles["BodyText"])
+
+    try:
+        reader = ImageReader(str(logo_path))
+        image_width, image_height = reader.getSize()
+    except Exception:
+        return Paragraph("&nbsp;", styles["BodyText"])
+
+    max_width = 1.8 * inch
+    max_height = 0.9 * inch
+    scale = min(max_width / float(image_width or 1), max_height / float(image_height or 1), 1.0)
+    return Image(str(logo_path), width=image_width * scale, height=image_height * scale)
+
+
 def _header_table(company: CompanySettings, proposal: Proposal, quote) -> Table:
     styles = getSampleStyleSheet()
     company_lines = [
@@ -54,13 +71,7 @@ def _header_table(company: CompanySettings, proposal: Proposal, quote) -> Table:
         proposal_lines.append(f"Quote Expiration: {expiration_date:%B %d, %Y}")
     proposal_flow = Paragraph("<br/>".join(proposal_lines), styles["BodyText"])
 
-    logo_path = _safe_path(company.logo_path)
-    if logo_path:
-        logo = Image(str(logo_path))
-        logo.drawHeight = 0.9 * inch
-        logo.drawWidth = min(1.8 * inch, logo.imageWidth * (logo.drawHeight / logo.imageHeight))
-    else:
-        logo = Paragraph("&nbsp;", styles["BodyText"])
+    logo = _logo_flowable(_safe_path(company.logo_path), styles)
 
     return Table(
         [[logo, company_flow, proposal_flow]],

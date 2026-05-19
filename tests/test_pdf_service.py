@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import struct
+import zlib
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models import Base, Customer, Project, Quote, QuoteLineItem, QuoteLaborLineItem
+from src.models import Base, CompanySettings, Customer, Project, Quote, QuoteLineItem, QuoteLaborLineItem
 from src.pdf_service import generate_proposal_pdf
 from src.proposal_service import create_or_update_proposal
 
@@ -14,6 +16,25 @@ def _session(tmp_path: Path):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+
+
+def _write_png(path: Path, width: int, height: int, rgba: tuple[int, int, int, int] = (0, 0, 0, 255)) -> None:
+    def chunk(chunk_type: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack("!I", len(data))
+            + chunk_type
+            + data
+            + struct.pack("!I", zlib.crc32(chunk_type + data) & 0xFFFFFFFF)
+        )
+
+    r, g, b, a = rgba
+    row = bytes([0] + [r, g, b, a] * width)
+    raw = row * height
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack("!IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw, level=9))
+    png += chunk(b"IEND", b"")
+    path.write_bytes(png)
 
 
 def _seed_quote(session) -> Quote:
@@ -85,6 +106,30 @@ def test_generate_proposal_pdf_creates_pdf_file(tmp_path):
     session = _session(tmp_path)
     quote = _seed_quote(session)
     proposal = create_or_update_proposal(session, quote.id)
+
+    pdf_path = generate_proposal_pdf(session, proposal.id)
+
+    pdf_file = Path(pdf_path)
+    assert pdf_file.exists()
+    assert pdf_file.suffix == ".pdf"
+    assert pdf_file.stat().st_size > 0
+
+
+def test_generate_proposal_pdf_clamps_tall_logo(tmp_path):
+    session = _session(tmp_path)
+    quote = _seed_quote(session)
+    proposal = create_or_update_proposal(session, quote.id)
+
+    logo_path = tmp_path / "tall-logo.png"
+    _write_png(logo_path, width=40, height=1200)
+
+    company_settings = session.query(CompanySettings).first()
+    if company_settings is None:
+        company_settings = CompanySettings(company_name="Test Company", logo_path=str(logo_path))
+        session.add(company_settings)
+    else:
+        company_settings.logo_path = str(logo_path)
+    session.commit()
 
     pdf_path = generate_proposal_pdf(session, proposal.id)
 
