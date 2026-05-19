@@ -98,6 +98,7 @@ def _openings_dataframe(openings: list[dict]) -> pd.DataFrame:
 
 def _blank_opening_row() -> dict:
     return {
+        "row_id": uuid.uuid4().hex,
         "opening_type": "window",
         "quantity": 1.0,
         "width_ft": None,
@@ -108,6 +109,36 @@ def _blank_opening_row() -> dict:
 
 def _normalize_editor_records(frame: pd.DataFrame) -> list[dict]:
     return frame.where(pd.notna(frame), None).replace("", None).to_dict("records")
+
+
+def _render_opening_rows(opening_rows: list[dict]) -> list[dict]:
+    rendered_rows: list[dict] = []
+    st.markdown("#### Openings")
+    st.caption("Edit openings here if the AI missed one or if you know the count for sure.")
+    for index, row in enumerate(opening_rows):
+        row_id = str(row.get("row_id") or f"opening_{index}")
+        with st.container(border=True):
+            cols = st.columns([1.2, 0.8, 0.8, 0.8, 0.8, 0.5])
+            opening_type = cols[0].text_input("Opening type", value=str(row.get("opening_type") or "window"), key=f"{row_id}_opening_type")
+            quantity = cols[1].number_input("Quantity", min_value=0.0, value=float(row.get("quantity") or 0.0), step=1.0, key=f"{row_id}_opening_quantity")
+            width_ft = cols[2].number_input("Width ft", min_value=0.0, value=float(row.get("width_ft") or 0.0), step=0.1, key=f"{row_id}_opening_width")
+            height_ft = cols[3].number_input("Height ft", min_value=0.0, value=float(row.get("height_ft") or 0.0), step=0.1, key=f"{row_id}_opening_height")
+            confidence = cols[4].number_input("Confidence", min_value=0.0, max_value=1.0, value=float(row.get("confidence") or 0.0), step=0.01, key=f"{row_id}_opening_confidence")
+            remove_clicked = cols[5].button("Remove", key=f"{row_id}_opening_remove")
+            if remove_clicked:
+                st.session_state["opening_editor_rows"] = [item for item in opening_rows if str(item.get("row_id") or "") != row_id]
+                st.rerun()
+            rendered_rows.append(
+                {
+                    "row_id": row_id,
+                    "opening_type": opening_type.strip() or "window",
+                    "quantity": quantity,
+                    "width_ft": width_ft if width_ft > 0 else None,
+                    "height_ft": height_ft if height_ft > 0 else None,
+                    "confidence": confidence,
+                }
+            )
+    return rendered_rows
 
 
 def _measurement_options(trade: str, shape: str) -> list[str]:
@@ -461,26 +492,12 @@ try:
             key="measurement_editor",
         )
 
-        st.subheader("Openings")
-        opening_editor = st.data_editor(
-            st.session_state[opening_state_key],
-            use_container_width=True,
-            num_rows="fixed",
-            column_config={
-                "opening_type": st.column_config.TextColumn(
-                    "Opening type",
-                    help="Examples: window, door, garage_door, other",
-                ),
-                "quantity": st.column_config.NumberColumn("Quantity", min_value=0.0, step=1.0),
-                "width_ft": st.column_config.NumberColumn("Width ft", min_value=0.0, step=0.1),
-                "height_ft": st.column_config.NumberColumn("Height ft", min_value=0.0, step=0.1),
-                "confidence": st.column_config.NumberColumn("Confidence", min_value=0.0, max_value=1.0, step=0.01),
-            },
-            key="opening_editor",
-        )
+        opening_df = st.session_state[opening_state_key].copy()
+        opening_rows = _render_opening_rows(opening_df.to_dict("records"))
+        st.session_state[opening_state_key] = pd.DataFrame(opening_rows)
 
         measurement_rows = _normalize_editor_records(measurement_editor)
-        opening_rows = _normalize_editor_records(opening_editor)
+        opening_rows = _normalize_editor_records(st.session_state[opening_state_key])
         deduct_openings = st.checkbox("Deduct openings from siding wall area", value=trade == "siding")
         preview = _compute_preview(trade, measurement_rows, opening_rows, deduct_openings)
 
