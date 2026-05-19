@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
@@ -34,6 +35,19 @@ def _save_uploaded_image(uploaded_file) -> str:
     uploaded_file.seek(0)
     file_path.write_bytes(uploaded_file.getbuffer())
     return str(file_path)
+
+
+def _extraction_json_text(extraction: dict | None) -> str:
+    if not extraction:
+        return ""
+    return json.dumps(extraction, indent=2, sort_keys=True)
+
+
+def _parse_extraction_json(raw_text: str) -> dict:
+    parsed = json.loads(raw_text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Extraction JSON must be a JSON object.")
+    return parsed
 
 
 def _measurements_dataframe(measurements: list[dict]) -> pd.DataFrame:
@@ -360,6 +374,7 @@ try:
                 st.error(str(exc))
             else:
                 st.session_state["measurement_extraction"] = extraction
+                st.session_state["measurement_extraction_json"] = _extraction_json_text(extraction)
                 st.success("Measurements extracted.")
 
     extraction = st.session_state.get("measurement_extraction")
@@ -371,7 +386,23 @@ try:
             st.info("\n".join(f"- {item}" for item in extraction.get("calculation_recommendations", [])))
 
         with st.expander("Raw extraction JSON", expanded=False):
-            st.json(extraction)
+            st.code(_extraction_json_text(extraction), language="json")
+            edited_json = st.text_area(
+                "Edit raw JSON before saving",
+                value=st.session_state.get("measurement_extraction_json", _extraction_json_text(extraction)),
+                height=320,
+                key="measurement_extraction_json_editor",
+            )
+            if st.button("Apply JSON edits"):
+                try:
+                    edited_extraction = _parse_extraction_json(edited_json)
+                except ValueError as exc:
+                    st.error(f"Invalid JSON: {exc}")
+                else:
+                    st.session_state["measurement_extraction"] = edited_extraction
+                    st.session_state["measurement_extraction_json"] = _extraction_json_text(edited_extraction)
+                    st.success("JSON edits applied.")
+                    st.rerun()
 
         measurement_df = _measurements_dataframe(extraction.get("detected_measurements", []))
         opening_df = _openings_dataframe(extraction.get("openings", []))
@@ -380,7 +411,7 @@ try:
         measurement_editor = st.data_editor(
             measurement_df,
             use_container_width=True,
-            num_rows="fixed",
+            num_rows="dynamic",
             column_config={
                 "include": st.column_config.CheckboxColumn("Include"),
                 "measurement_type": st.column_config.SelectboxColumn(
@@ -410,7 +441,7 @@ try:
         opening_editor = st.data_editor(
             opening_df,
             use_container_width=True,
-            num_rows="fixed",
+            num_rows="dynamic",
             column_config={
                 "opening_type": st.column_config.SelectboxColumn(
                     "Opening type",
