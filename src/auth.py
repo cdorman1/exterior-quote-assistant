@@ -73,7 +73,26 @@ def logout() -> None:
 
 
 def require_auth() -> str:
-    return "public"
+    config = get_auth_config()
+    if not config["username"] or not config["password_hash"]:
+        st.error("Application authentication is not configured.")
+        st.stop()
+
+    if is_authenticated():
+        return str(st.session_state.get(USERNAME_SESSION_KEY) or config["username"])
+
+    st.title("Sign in")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+
+    if submitted:
+        if login(username, password):
+            st.rerun()
+        st.error("Invalid username or password.")
+
+    st.stop()
 
 
 def password_hash_cli() -> None:
