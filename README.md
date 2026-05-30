@@ -1,5 +1,10 @@
 # Exterior Quote Assistant
 
+Status: public source repository for a private/client-facing quoting app. Do not
+commit live OpenAI keys, auth hashes, `.env` files, uploaded blueprints/images,
+generated proposals, customer records, SQLite databases, logs, or deployment
+secrets.
+
 Exterior Quote Assistant is an MVP contractor quoting dashboard for roofing and siding contractors. It supports new construction jobs quoted from blueprint measurements entered manually and existing construction jobs quoted from field measurements.
 
 Version 1 intentionally does not automate blueprint measurement extraction. The scaffold focuses on the pricing engine, database models, seed data, Streamlit dashboard, and a basic quote-to-proposal workflow.
@@ -17,6 +22,12 @@ streamlit run app.py
 ```
 
 The app uses SQLite by default at `data/exterior_quote_assistant.db`. Copy `.env.example` to `.env` if you want to override defaults.
+
+Run tests with:
+
+```bash
+python -m pytest
+```
 
 ## Authentication
 
@@ -38,6 +49,9 @@ python -m src.auth your-plaintext-password
 ```
 
 The command prints a hash you can paste into `.env`.
+
+Never commit generated password hashes for real deployments. Keep production
+credentials in the VPS-local `.env` file or another approved secret store.
 
 ## Hostinger VPS Deployment
 
@@ -124,6 +138,8 @@ OPENAI_API_KEY=
 OPENAI_VISION_MODEL=gpt-5.5
 ```
 
+The `OPENAI_API_KEY` value must remain local to the deployment environment.
+
 ## Development Note
 
 During early development, if database models change, delete `data/exterior_quote_assistant.db` and rerun:
@@ -131,6 +147,9 @@ During early development, if database models change, delete `data/exterior_quote
 ```bash
 python -m src.seed_data
 ```
+
+Before opening a pull request, run the test suite and scan the diff for accidental
+credentials or private customer/project data.
 
 ## Project Structure
 
