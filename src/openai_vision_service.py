@@ -18,20 +18,28 @@ except Exception:  # pragma: no cover - keeps importable without the SDK install
 class DetectedMeasurement(BaseModel):
     label: str
     measurement_type: str
-    shape: Literal["rectangle", "triangle", "trapezoid", "line", "count", "unknown"]
+    shape: Literal["rectangle", "triangle", "trapezoid", "polygon", "traced_polygon", "line", "polyline", "traced_line", "count", "unknown"]
     width_ft: float | None = None
     height_ft: float | None = None
     base_ft: float | None = None
     top_width_ft: float | None = None
     bottom_width_ft: float | None = None
     length_ft: float | None = None
+    segments_ft: list[float] | None = None
+    points_ft: list[list[float]] | None = None
     quantity: float | None = None
+    deduct_openings: bool = False
+    openings: list["OpeningMeasurement"] | None = None
+    overlay_points: list[list[float]] | None = None
     confidence: float = Field(ge=0, le=1)
     source_text: str | None = None
+    scale_calibration: str | None = None
 
 
 class OpeningMeasurement(BaseModel):
     opening_type: Literal["window", "door", "garage_door", "other"]
+    label: str | None = None
+    parent_label: str | None = None
     quantity: float | None = None
     width_ft: float | None = None
     height_ft: float | None = None
@@ -69,6 +77,10 @@ def _build_instructions(trade_hint: str | None = None) -> str:
     return (
         "Extract construction measurements visible in the uploaded image. "
         "Focus only on roofing and siding. Read typed or handwritten measurements if visible. "
+        "Prefer printed dimensions and sheet scale/calibration text; do not infer a scale from pixels unless a visible scale or calibration line is present. "
+        "Return polygon/traced_polygon points_ft for traced area shapes and line/polyline segments_ft or length_ft for trim, ridge, rake, and eave runs. "
+        "For siding walls, include opening deductions only when window/door dimensions are visible and set deduct_openings true with opening dimensions. "
+        "If overlay geometry is visible, include overlay_points as image pixel points so the app can render review overlays. "
         "Do not guess missing dimensions. If a dimension is unclear, return null and add a warning. "
         "If units are not visible, assume feet only if strongly implied; otherwise return null and add a warning. "
         "Do not calculate final quote price. Do not create material pricing. Do not estimate labor. "

@@ -31,6 +31,7 @@ from src.pricing_engine import (
     calculate_hourly_labor,
     calculate_subcontractor_labor,
 )
+from src.takeoff_extraction_service import link_quote_measurements
 
 
 def _project_summary(project: Project, trade: str, measured_quantity: float, unit: str, material_name: str, stories: float, complexity_label: str, access_label: str) -> list[tuple[str, str]]:
@@ -935,7 +936,10 @@ try:
                         notes=item["notes"],
                     )
                 )
-            db.commit()
+            if draft.get("takeoff_measurement_ids"):
+                link_quote_measurements(db, quote.id, draft["takeoff_measurement_ids"])
+            else:
+                db.commit()
             st.success(f"Quote {quote.id} saved.")
             st.session_state.quote_draft = None
             st.rerun()

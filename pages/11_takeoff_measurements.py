@@ -75,6 +75,69 @@ try:
             st.success("Measurement saved.")
             st.rerun()
 
+    pending_ai_measurements = (
+        db.query(TakeoffMeasurement)
+        .filter(
+            TakeoffMeasurement.project_id == selected_project.id,
+            TakeoffMeasurement.source == "openai_vision_extracted",
+            TakeoffMeasurement.approved.is_(False),
+        )
+        .order_by(TakeoffMeasurement.created_at.desc())
+        .all()
+    )
+    if pending_ai_measurements:
+        st.subheader("Pending AI-extracted measurements")
+        st.caption("Review, edit, and approve AI takeoff drafts before they can affect Quote Builder.")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "ID": item.id,
+                        "Trade": item.trade,
+                        "Measurement Type": item.measurement_type,
+                        "Quantity": item.quantity,
+                        "Unit": item.unit,
+                        "Confidence": item.confidence_score,
+                        "Blueprint File": getattr(item.blueprint_file, "original_file_name", None),
+                        "Sheet": getattr(item.blueprint_sheet, "sheet_name", None) or getattr(item.blueprint_sheet, "sheet_type", None),
+                        "Notes": item.notes,
+                    }
+                    for item in pending_ai_measurements
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        review_options = {f"#{item.id} - {item.measurement_type} ({item.quantity:g} {item.unit})": item for item in pending_ai_measurements}
+        selected_ai_measurement = review_options[st.selectbox("AI draft to review", list(review_options))]
+        with st.form("review_ai_takeoff_measurement"):
+            ai_trade = st.selectbox("Trade", ["roofing", "siding"], index=["roofing", "siding"].index(selected_ai_measurement.trade) if selected_ai_measurement.trade in {"roofing", "siding"} else 0)
+            ai_measurement_type = st.text_input("Measurement type", value=selected_ai_measurement.measurement_type)
+            ai_quantity = st.number_input("Quantity", min_value=0.0, value=float(selected_ai_measurement.quantity or 0), step=1.0)
+            ai_unit_options = ["square", "square_foot", "linear_foot", "each", "job", "allowance"]
+            ai_unit = st.selectbox(
+                "Unit",
+                ai_unit_options,
+                index=ai_unit_options.index(selected_ai_measurement.unit) if selected_ai_measurement.unit in ai_unit_options else 1,
+            )
+            ai_confidence = st.number_input("Confidence score", min_value=0.0, max_value=1.0, value=float(selected_ai_measurement.confidence_score or 0), step=0.05)
+            approve_ai = st.checkbox("Approve this measurement", value=False)
+            ai_approved_by = st.text_input("Approved by", value=selected_ai_measurement.approved_by or "")
+            ai_notes = st.text_area("Review notes", value=selected_ai_measurement.notes or "")
+            review_submitted = st.form_submit_button("Save AI measurement review")
+            if review_submitted and ai_measurement_type:
+                selected_ai_measurement.trade = ai_trade
+                selected_ai_measurement.measurement_type = ai_measurement_type
+                selected_ai_measurement.quantity = ai_quantity
+                selected_ai_measurement.unit = ai_unit
+                selected_ai_measurement.confidence_score = ai_confidence
+                selected_ai_measurement.notes = ai_notes
+                selected_ai_measurement.approved = approve_ai
+                selected_ai_measurement.approved_by = ai_approved_by or None if approve_ai else None
+                db.commit()
+                st.success("AI measurement review saved.")
+                st.rerun()
+
     measurements = db.query(TakeoffMeasurement).filter(TakeoffMeasurement.project_id == selected_project.id).order_by(TakeoffMeasurement.created_at.desc()).all()
     filter_choice = st.radio("Filter", ["All measurements", "Approved only", "Unapproved only", "Roofing", "Siding"], horizontal=True)
     if filter_choice == "Approved only":
