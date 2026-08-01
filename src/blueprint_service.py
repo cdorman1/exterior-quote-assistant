@@ -62,6 +62,32 @@ def save_uploaded_blueprint(uploaded_file, upload_dir: str) -> dict:
     }
 
 
+def render_pdf_sheet_to_image(file_path: str, page_number: int, output_dir: str, dpi: int = 200) -> str:
+    if fitz is None:  # pragma: no cover - exercised when dependency missing
+        raise ImportError("PyMuPDF is required to render PDF sheets.")
+    if page_number < 1:
+        raise ValueError("page_number is 1-based and must be greater than zero.")
+
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = Path(file_path)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", pdf_path.stem).strip("._") or "blueprint"
+    output_path = target_dir / f"{safe_stem}_page_{page_number}.png"
+    zoom = dpi / 72
+    matrix = fitz.Matrix(zoom, zoom)
+
+    document = fitz.open(file_path)
+    try:
+        if page_number > document.page_count:
+            raise ValueError(f"PDF has {document.page_count} pages; cannot render page {page_number}.")
+        page = document.load_page(page_number - 1)
+        pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+        pixmap.save(output_path)
+    finally:
+        document.close()
+    return str(output_path)
+
+
 def extract_pdf_text(file_path: str) -> dict[str, Any]:
     if fitz is None:  # pragma: no cover - exercised when dependency missing
         raise ImportError("PyMuPDF is required to extract PDF text.")

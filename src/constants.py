@@ -35,7 +35,10 @@ LABOR_CONDITION_MULTIPLIERS = {
 }
 QUOTE_STATUSES = ["draft", "sent", "accepted", "rejected"]
 PROJECT_STATUSES = ["lead", "estimating", "quoted", "won", "lost", "completed"]
-TAKEOFF_SOURCES = ["manual", "pdf_assisted", "field_measurement", "openai_vision_extracted", "ai_suggested_future", "cad_extracted_future"]
+TAKEOFF_SOURCES = ["manual", "pdf_assisted", "field_measurement", "openai_vision_extracted", "manual_overlay_adjusted", "ai_suggested_future", "cad_extracted_future"]
+TAKEOFF_REVIEW_IMAGE_WIDTH = 1000
+TAKEOFF_REVIEW_COORDINATE_SPACE = f"review_display_px_{TAKEOFF_REVIEW_IMAGE_WIDTH}w"
+TAKEOFF_NATIVE_COORDINATE_SPACE = "native_rendered_image_px"
 OPENAI_VISION_MODEL_DEFAULT = "gpt-5.5"
 MEASUREMENT_IMAGE_TYPES = ["png", "jpg", "jpeg", "webp"]
 ROOFING_AREA_MEASUREMENT_TYPES = ["roof_area"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
@@ -127,6 +127,7 @@ class Quote(Base):
     line_items: Mapped[list["QuoteLineItem"]] = relationship(back_populates="quote")
     labor_line_items: Mapped[list["QuoteLaborLineItem"]] = relationship(back_populates="quote")
     proposals: Mapped[list["Proposal"]] = relationship(back_populates="quote")
+    measurement_links: Mapped[list["QuoteMeasurementLink"]] = relationship(back_populates="quote")
 
 
 class QuoteLineItem(Base):
@@ -208,6 +209,25 @@ class BlueprintSheet(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     blueprint_file: Mapped[BlueprintFile] = relationship(back_populates="sheets")
+    scale_calibration_edits: Mapped[list["BlueprintScaleCalibrationEdit"]] = relationship(
+        back_populates="blueprint_sheet", order_by="BlueprintScaleCalibrationEdit.created_at"
+    )
+
+
+class BlueprintScaleCalibrationEdit(Base):
+    __tablename__ = "blueprint_scale_calibration_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    blueprint_sheet_id: Mapped[int] = mapped_column(ForeignKey("blueprint_sheets.id"), nullable=False)
+    calibrated_by: Mapped[str | None] = mapped_column(String(255))
+    pixel_distance: Mapped[float] = mapped_column(Float, nullable=False)
+    real_distance_ft: Mapped[float] = mapped_column(Float, nullable=False)
+    feet_per_pixel: Mapped[float] = mapped_column(Float, nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    previous_calibrated_scale: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    blueprint_sheet: Mapped[BlueprintSheet] = relationship(back_populates="scale_calibration_edits")
 
 
 class TakeoffMeasurement(Base):
@@ -231,6 +251,66 @@ class TakeoffMeasurement(Base):
     project: Mapped[Project] = relationship(back_populates="takeoff_measurements")
     blueprint_file: Mapped[BlueprintFile | None] = relationship()
     blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
+    quote_links: Mapped[list["QuoteMeasurementLink"]] = relationship(back_populates="takeoff_measurement")
+    geometry_edits: Mapped[list["TakeoffMeasurementGeometryEdit"]] = relationship(
+        back_populates="takeoff_measurement", order_by="TakeoffMeasurementGeometryEdit.created_at"
+    )
+
+
+class TakeoffMeasurementGeometryEdit(Base):
+    __tablename__ = "takeoff_measurement_geometry_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    takeoff_measurement_id: Mapped[int] = mapped_column(ForeignKey("takeoff_measurements.id"), nullable=False)
+    blueprint_sheet_id: Mapped[int | None] = mapped_column(ForeignKey("blueprint_sheets.id"))
+    edited_by: Mapped[str | None] = mapped_column(String(255))
+    geometry_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    scale_json: Mapped[dict | None] = mapped_column(JSON)
+    previous_quantity: Mapped[float | None] = mapped_column(Float)
+    updated_quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    previous_unit: Mapped[str | None] = mapped_column(String(50))
+    updated_unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    takeoff_measurement: Mapped[TakeoffMeasurement] = relationship(back_populates="geometry_edits")
+    blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
+
+
+class TakeoffExtractionRun(Base):
+    __tablename__ = "takeoff_extraction_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    blueprint_file_id: Mapped[int] = mapped_column(ForeignKey("blueprint_files.id"), nullable=False)
+    blueprint_sheet_id: Mapped[int] = mapped_column(ForeignKey("blueprint_sheets.id"), nullable=False)
+    trade: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="started")
+    rendered_image_path: Mapped[str | None] = mapped_column(Text)
+    overlay_path: Mapped[str | None] = mapped_column(Text)
+    raw_response: Mapped[dict | None] = mapped_column(JSON)
+    warnings_json: Mapped[list | None] = mapped_column(JSON)
+    created_measurement_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_measurement_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped[Project] = relationship()
+    blueprint_file: Mapped[BlueprintFile] = relationship()
+    blueprint_sheet: Mapped[BlueprintSheet] = relationship()
+
+
+class QuoteMeasurementLink(Base):
+    __tablename__ = "quote_measurement_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quotes.id"), nullable=False)
+    takeoff_measurement_id: Mapped[int] = mapped_column(ForeignKey("takeoff_measurements.id"), nullable=False)
+    usage: Mapped[str] = mapped_column(String(100), default="material_quantity")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    quote: Mapped[Quote] = relationship(back_populates="measurement_links")
+    takeoff_measurement: Mapped[TakeoffMeasurement] = relationship(back_populates="quote_links")
 
 
 class CompanySettings(Base):

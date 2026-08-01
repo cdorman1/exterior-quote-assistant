@@ -8,7 +8,8 @@ import streamlit as st
 from src.auth import require_auth
 from src.blueprint_service import create_blueprint_sheets_from_pdf, extract_pdf_text, save_uploaded_blueprint
 from src.database import SessionLocal, init_db
-from src.models import BlueprintFile, BlueprintSheet, Project
+from src.models import BlueprintFile, BlueprintSheet, Project, TakeoffExtractionRun
+from src.takeoff_extraction_service import run_auto_takeoff
 
 require_auth()
 st.title("Blueprints")
@@ -118,5 +119,68 @@ try:
             use_container_width=True,
             hide_index=True,
         )
+
+        st.subheader("AI assisted takeoff")
+        st.caption(
+            "Run AI takeoff on one sheet at a time. Results are saved as unapproved draft measurements "
+            "and must be reviewed on the Takeoff Measurements page before Quote Builder can use them."
+        )
+        if sheets:
+            sheet_options = {
+                f"Page {sheet.page_number} - {sheet.sheet_number or sheet.sheet_name or sheet.sheet_type}": sheet
+                for sheet in sheets
+            }
+            takeoff_sheet = sheet_options[st.selectbox("Sheet to extract", list(sheet_options), key="ai_takeoff_sheet")]
+            takeoff_trade = st.selectbox("Trade hint", ["roofing", "siding"], key="ai_takeoff_trade")
+            if st.button("Run AI takeoff for selected sheet"):
+                try:
+                    result = run_auto_takeoff(db, takeoff_sheet.id, takeoff_trade)
+                except RuntimeError as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"AI takeoff failed: {exc}")
+                else:
+                    st.success(
+                        f"AI takeoff created {result['created_count']} draft measurement(s). "
+                        "Review and approve them on the Takeoff Measurements page."
+                    )
+                    if result.get("skipped_count"):
+                        st.warning(f"Skipped {result['skipped_count']} result(s) that could not be converted to quantities.")
+                    if result.get("warnings"):
+                        st.warning("Warnings: " + "; ".join(str(item) for item in result["warnings"]))
+                    st.caption(f"Rendered sheet image: {result['image_path']}")
+                    if result.get("overlay_path"):
+                        st.caption(f"Overlay SVG: {result['overlay_path']}")
+
+        extraction_runs = (
+            db.query(TakeoffExtractionRun)
+            .filter(TakeoffExtractionRun.blueprint_file_id == selected_blueprint.id)
+            .order_by(TakeoffExtractionRun.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        if extraction_runs:
+            st.subheader("AI extraction run audit history")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Run ID": run.id,
+                            "Created": run.created_at,
+                            "Sheet": getattr(run.blueprint_sheet, "sheet_number", None) or getattr(run.blueprint_sheet, "sheet_name", None),
+                            "Trade": run.trade,
+                            "Status": run.status,
+                            "Created Measurements": run.created_measurement_count,
+                            "Skipped": run.skipped_measurement_count,
+                            "Rendered Image": run.rendered_image_path,
+                            "Overlay": run.overlay_path,
+                            "Error": run.error_message,
+                        }
+                        for run in extraction_runs
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
 finally:
     db.close()
