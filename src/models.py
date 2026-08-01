@@ -209,6 +209,25 @@ class BlueprintSheet(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     blueprint_file: Mapped[BlueprintFile] = relationship(back_populates="sheets")
+    scale_calibration_edits: Mapped[list["BlueprintScaleCalibrationEdit"]] = relationship(
+        back_populates="blueprint_sheet", order_by="BlueprintScaleCalibrationEdit.created_at"
+    )
+
+
+class BlueprintScaleCalibrationEdit(Base):
+    __tablename__ = "blueprint_scale_calibration_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    blueprint_sheet_id: Mapped[int] = mapped_column(ForeignKey("blueprint_sheets.id"), nullable=False)
+    calibrated_by: Mapped[str | None] = mapped_column(String(255))
+    pixel_distance: Mapped[float] = mapped_column(Float, nullable=False)
+    real_distance_ft: Mapped[float] = mapped_column(Float, nullable=False)
+    feet_per_pixel: Mapped[float] = mapped_column(Float, nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    previous_calibrated_scale: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    blueprint_sheet: Mapped[BlueprintSheet] = relationship(back_populates="scale_calibration_edits")
 
 
 class TakeoffMeasurement(Base):
@@ -233,6 +252,29 @@ class TakeoffMeasurement(Base):
     blueprint_file: Mapped[BlueprintFile | None] = relationship()
     blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
     quote_links: Mapped[list["QuoteMeasurementLink"]] = relationship(back_populates="takeoff_measurement")
+    geometry_edits: Mapped[list["TakeoffMeasurementGeometryEdit"]] = relationship(
+        back_populates="takeoff_measurement", order_by="TakeoffMeasurementGeometryEdit.created_at"
+    )
+
+
+class TakeoffMeasurementGeometryEdit(Base):
+    __tablename__ = "takeoff_measurement_geometry_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    takeoff_measurement_id: Mapped[int] = mapped_column(ForeignKey("takeoff_measurements.id"), nullable=False)
+    blueprint_sheet_id: Mapped[int | None] = mapped_column(ForeignKey("blueprint_sheets.id"))
+    edited_by: Mapped[str | None] = mapped_column(String(255))
+    geometry_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    scale_json: Mapped[dict | None] = mapped_column(JSON)
+    previous_quantity: Mapped[float | None] = mapped_column(Float)
+    updated_quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    previous_unit: Mapped[str | None] = mapped_column(String(50))
+    updated_unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    takeoff_measurement: Mapped[TakeoffMeasurement] = relationship(back_populates="geometry_edits")
+    blueprint_sheet: Mapped[BlueprintSheet | None] = relationship()
 
 
 class TakeoffExtractionRun(Base):

@@ -31,11 +31,23 @@ def calculate_opening_area(quantity: float, width_ft: float, height_ft: float) -
 def calculate_total_opening_area(openings: list[dict]) -> float:
     total = 0.0
     for opening in openings:
+        if not isinstance(opening, dict):
+            continue
+        quantity_value = opening.get("quantity") if opening.get("quantity") is not None else 1
+        if _missing(quantity_value):
+            quantity = 1.0
+        else:
+            quantity = float(quantity_value)
+        area_sqft = opening.get("area_sqft")
+        if not _missing(area_sqft):
+            area_value = float(area_sqft)
+            if area_value > 0:
+                total += quantity * area_value
+                continue
         width_ft = opening.get("width_ft")
         height_ft = opening.get("height_ft")
         if _missing(width_ft) or _missing(height_ft):
             continue
-        quantity = float(opening.get("quantity") or 1)
         total += calculate_opening_area(quantity, float(width_ft), float(height_ft))
     return round(total, 2)
 

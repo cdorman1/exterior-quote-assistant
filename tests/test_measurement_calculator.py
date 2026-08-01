@@ -38,8 +38,9 @@ def test_calculate_total_opening_area():
             {"quantity": 2, "width_ft": 3, "height_ft": 4},
             {"quantity": 1, "width_ft": 5, "height_ft": 6},
             {"quantity": 1, "width_ft": None, "height_ft": 4},
+            {"quantity": "", "width_ft": 2, "height_ft": 3},
         ]
-    ) == 54
+    ) == 60
 
 
 def test_calculate_net_wall_area():
